@@ -1,0 +1,98 @@
+package frc.robot.subsystems;
+
+import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.subsystems.robot.FeedSubsystem;
+import frc.robot.subsystems.robot.IntakeSubsystem;
+import frc.robot.subsystems.robot.ShooterSubsystem;
+import frc.robot.util.NetworkTables;
+
+public class Mechanisms extends SubsystemBase {
+    private ShooterSubsystem shooters;
+    private IntakeSubsystem intakes;
+    private FeedSubsystem feeds;
+    private boolean wantIntake = false;
+    private boolean isIntakeOn = false;
+    private boolean isFHOn = false;
+    private boolean isROn = false;
+    private double startTimeafterSpinning = 1.0;
+    private final Timer jamTimer = new Timer();
+    private boolean shooterReady = false;
+
+    public Mechanisms(ShooterSubsystem ShooterSubsystem, IntakeSubsystem IntakeSubsystem, FeedSubsystem FeedSubsystem) {
+        this.shooters = ShooterSubsystem;
+        this.intakes = IntakeSubsystem;
+        this.feeds = FeedSubsystem;
+    }
+    public void StartShooting() {
+        NetworkTables.putRobotState("SPINNING UP");
+        shooterReady = false;
+        shooters.start();
+        jamTimer.restart();
+        jamTimer.start();
+    }
+    public void StartFixedShooting() {
+        NetworkTables.putRobotState("SPINNING UP");
+        shooterReady = false;
+        shooters.fixstart();
+        feeds.rollersStart();
+        isROn = true;
+        jamTimer.restart();
+        jamTimer.start();
+    }
+    /** Switches feed behavior to Full-Hopper (continuous intake bounce */
+    public void FullHopperMode() {
+        isFHOn = true;
+        isROn = false;
+        shooterReady = false; // re-arm so periodic() re-fires this mode's entry action
+    }
+
+    /** spin up and go straight to Full-Hopper mode, purely for auto. */
+    public void FullHopperShoot() {
+        StartShooting();
+        FullHopperMode();
+     }
+
+    public void Intake() {
+        NetworkTables.putRobotState("INTAKE");
+        wantIntake = true;  
+        intakes.requestDown();
+    }
+
+    public void StopIntake() {
+        NetworkTables.putRobotState("STOPPED INTAKE");
+        wantIntake = false;
+        intakes.stop();
+        isIntakeOn = false;
+    }
+
+    public void StopShoot() {
+        NetworkTables.putRobotState("STOPPED FIRING");
+        shooters.stop();
+        feeds.stop();
+        isFHOn = false;
+        isROn = false;
+        shooterReady = false;
+    }
+
+    @Override
+
+    public void periodic() {
+        if (wantIntake && intakes.isAtBottom() && !isIntakeOn) {
+            intakes.start();
+            isIntakeOn = true;
+        }
+        if (isROn && shooters.atSpeed() && !shooterReady) {
+            NetworkTables.putRobotState("R SHOOTER READY");
+            feeds.rollersStart();
+            intakes.requestUp();
+            shooterReady = true;
+        }
+        if  (isFHOn && (shooters.atSpeed() || jamTimer.hasElapsed(startTimeafterSpinning)) && !shooterReady) {
+            NetworkTables.putRobotState("FH SHOOTER READY");
+            feeds.start();
+            shooterReady = true;
+            intakes.start();
+        }
+    }
+}

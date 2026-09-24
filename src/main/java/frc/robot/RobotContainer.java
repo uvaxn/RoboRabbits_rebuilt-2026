@@ -1,0 +1,233 @@
+package frc.robot;
+
+/*
+ * CONTROLS 
+ * 
+ * Left Joystick  -- Moves robot
+ * Right Joystick -- Rotates robot
+ * Left Trigger   -- Intake (drops down and intakes)
+ * Right Trigger  -- Shoot (lifts intake and shoots)
+ * Right Bumper & Trigger -- Continously lifts intake up and down while shooting
+ * Left Bumper    -- Reset field-centric heading
+ * X Button       -- Auto-align to nearest AprilTag
+ * Y Button       -- Auto-align to alliance Wall
+ * A Button       -- Points wheels based on joystick direction
+ * 
+ * d-pad UP       -- lift intake
+ * d-pad DOWN     -- drop intake
+ */
+
+import static edu.wpi.first.units.Units.*;
+import edu.wpi.first.math.MathUtil;
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
+import com.ctre.phoenix6.swerve.SwerveRequest;
+
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.auto.NamedCommands;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.wpilibj.DigitalInput;
+
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.InstantCommand;
+import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
+import frc.robot.commands.AutoAlign.AlignToAllianceWall;
+import frc.robot.commands.AutoAlign.AlignToPoint;
+import frc.robot.constants.Constants;
+import frc.robot.constants.Landmarks;
+import frc.robot.generated.TunerConstants;
+import frc.robot.subsystems.CommandSwerveDrivetrain;
+import frc.robot.subsystems.DriveInputs;
+import frc.robot.subsystems.EaseofLife;
+import frc.robot.subsystems.Mechanisms;
+import frc.robot.subsystems.robot.FeedSubsystem;
+import frc.robot.subsystems.robot.IntakeSubsystem;
+import frc.robot.subsystems.robot.ShooterSubsystem;
+import frc.robot.vision.Limelight;
+
+public class RobotContainer {
+
+    private final double MaxAngularRate = RotationsPerSecond.of(Variables.MaxAngularRate).in(RadiansPerSecond);
+    
+    private static final double ROTATION_STICK_DEADBAND = 0.08; // matches DriveInputs' X/Y deadband
+
+    private final SwerveRequest.FieldCentric drive = new SwerveRequest.FieldCentric()
+        // .withDeadband(Vars.MaxSpeed * 0.03) -- this has 3 percent deadband
+        .withRotationalDeadband(MaxAngularRate * 0.03) // was 0.003 (0.3%) -- effectively no deadband, fixed the decimal
+        .withDriveRequestType(DriveRequestType.OpenLoopVoltage);
+
+    private final SwerveRequest.PointWheelsAt point = new SwerveRequest.PointWheelsAt();
+    private final Telemetry logger = new Telemetry(Variables.getMaxSpeed());
+    private final CommandXboxController joystick = new CommandXboxController(0);
+
+    public final DriveInputs driveInputs = new DriveInputs(
+        () -> joystick.getLeftY(),
+        () -> joystick.getLeftX(), 
+        joystick
+    );
+    private SendableChooser<Command> autoChooser;
+    
+    public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
+    
+    public final Limelight cameraSubsystem = new Limelight(Constants.LL_NAME);
+
+    public final EaseofLife easeOfLife = new EaseofLife(cameraSubsystem);
+
+    // Motors
+    public final TalonFX m_ShooterR   = new TalonFX(Constants.m_ShooterR);
+    public final TalonFX m_ShooterL   = new TalonFX(Constants.m_ShooterL);
+    public final TalonFX m_Intake     = new TalonFX(Constants.m_Intake);
+    public final TalonFX m_IntakeDrop = new TalonFX(Constants.m_IntakeDrop);
+    public final TalonFX m_LowerFeed  = new TalonFX(Constants.m_LowerFeed);
+    public final TalonFX m_UpperFeed  = new TalonFX(Constants.m_UpperFeed);
+
+    
+    
+    public final IntakeSubsystem intakes = new IntakeSubsystem(
+        m_Intake, 
+        m_IntakeDrop,
+
+        new DigitalInput(0),
+        new DigitalInput(1),
+
+        easeOfLife, 
+        driveInputs
+    );
+    public final ShooterSubsystem shooters = new ShooterSubsystem(
+        m_ShooterR, 
+        m_ShooterL, 
+
+        easeOfLife
+    );
+    public final FeedSubsystem feeds = new FeedSubsystem(
+        intakes, 
+        easeOfLife, 
+
+        m_LowerFeed, 
+        m_UpperFeed
+    );
+    public final Mechanisms mechanisms = new Mechanisms(
+        shooters, 
+        intakes, 
+        feeds
+    );
+    // Commands
+    public RobotContainer() {
+        NamedCommands.registerCommand("shoot",      new InstantCommand(() -> mechanisms.FullHopperShoot()));
+        NamedCommands.registerCommand("stop shoot", new InstantCommand(() -> mechanisms.StopShoot()));
+        NamedCommands.registerCommand("intake",     new InstantCommand(intakes::start, intakes));
+        NamedCommands.registerCommand("stop intake",  new InstantCommand(intakes::stop,  intakes));
+        NamedCommands.registerCommand("requestUp", new InstantCommand(intakes::requestUp));
+        NamedCommands.registerCommand("requestDown", new InstantCommand(intakes::requestDown));
+        
+        final AlignToPoint alignToHub = new AlignToPoint(
+            easeOfLife, drivetrain,
+            () -> Landmarks.hubOrNearestShot(drivetrain.getState().Pose.getTranslation()),
+            () -> 0, () -> 0);
+        NamedCommands.registerCommand("align",
+            alignToHub.until(alignToHub::isAimed).withTimeout(2.0));
+            
+        drivetrain.configureAutoBuilder(); 
+        configureBindings();
+
+        autoChooser = AutoBuilder.buildAutoChooser("None");
+        SmartDashboard.putData("Auto", autoChooser);
+    }
+
+    private void configureBindings() {
+
+        drivetrain.setDefaultCommand( // reminder that this chunk of code basically controls the movement of the robot
+            drivetrain.applyRequest(() ->
+                drive.withVelocityX(driveInputs.getX())
+                    .withVelocityY(driveInputs.getY())
+                    .withRotationalRate(
+                        -MathUtil.applyDeadband(joystick.getRightX(), ROTATION_STICK_DEADBAND) * MaxAngularRate)
+            )
+        );
+
+        RobotModeTriggers.disabled().whileTrue(
+            drivetrain.applyRequest(SwerveRequest.Idle::new).ignoringDisable(true)
+        );
+
+        // Wheel point mode
+        joystick.a().whileTrue(drivetrain.applyRequest(() ->
+            point.withModuleDirection(new Rotation2d(-joystick.getLeftY(), -joystick.getLeftX()))
+        ));
+
+        // SysId routines
+        //joystick.back().and(joystick.y()).whileTrue(drivetrain.sysIdDynamic(Direction.kForward));
+        //joystick.back().and(joystick.x()).whileTrue(drivetrain.sysIdDynamic(Direction.kReverse));
+        //joystick.start().and(joystick.y()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
+        //joystick.start().and(joystick.x()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
+
+        // Reset field centric heading, odometry points toward alliance wall.
+        joystick.start().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
+
+        // auto-align: hub inside the home box, nearest off-hub shot point outside it
+        joystick.x().whileTrue(new AlignToPoint(
+            easeOfLife,
+            drivetrain,
+            () -> Landmarks.hubOrNearestShot(drivetrain.getState().Pose.getTranslation()),
+            driveInputs::getX,
+            driveInputs::getY
+        ));
+        // align to alliance wall is the exact same thing btw, just toward your alliance wall ^
+        joystick.y().whileTrue(new AlignToAllianceWall(
+            drivetrain,
+            easeOfLife,
+            driveInputs::getX,
+            driveInputs::getY
+        ));
+
+        // Intake
+        joystick.leftTrigger()
+            .onTrue(new InstantCommand(mechanisms::Intake, mechanisms))
+            .onFalse(new InstantCommand(mechanisms::StopIntake, mechanisms));
+
+        // Right trigger: shoot AND auto-align (hub in the home box, off-hub shot point outside it).
+        joystick.rightTrigger()
+            .onTrue(new InstantCommand(mechanisms::StartShooting, mechanisms))
+            .onFalse(new InstantCommand(mechanisms::StopShoot, mechanisms));
+        joystick.rightTrigger()
+            .onTrue(new InstantCommand(mechanisms::FullHopperMode, mechanisms));
+        joystick.rightTrigger().whileTrue(new AlignToPoint(
+            easeOfLife,
+            drivetrain,
+            () -> Landmarks.hubOrNearestShot(drivetrain.getState().Pose.getTranslation()),
+            driveInputs::getX,
+            driveInputs::getY
+        ));
+
+
+        joystick.leftBumper()
+            .onTrue(new InstantCommand(mechanisms::StartFixedShooting, mechanisms))
+            .onFalse(new InstantCommand(mechanisms::StopShoot, mechanisms));
+
+
+        // Right bumper: align to alliance wall only, no shooting.
+        joystick.rightBumper().whileTrue(new AlignToAllianceWall(
+            drivetrain,
+            easeOfLife,
+            driveInputs::getX,
+            driveInputs::getY
+        ));
+
+        joystick.povDown()
+            .onTrue(new InstantCommand(intakes::requestDown, intakes));
+        joystick.povUp()
+            .onTrue(new InstantCommand(intakes::requestUp, intakes));
+        drivetrain.registerTelemetry(logger::telemeterize);
+
+    }
+
+    public Command getAutonomousCommand() {
+        Command selected = autoChooser.getSelected();
+        if (selected == null) return Commands.none();
+        System.out.println("auto: " + selected.getName());
+        return selected;
+    }
+}
