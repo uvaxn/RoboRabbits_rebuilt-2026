@@ -21,12 +21,12 @@ import frc.robot.vision.LimelightHelpers.PoseEstimate;
 
 public class Limelight extends SubsystemBase {
     private static final AprilTagFieldLayout FIELD =
-            AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
+            AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltWelded);
     private static final double FIELD_LENGTH_M = FIELD.getFieldLength();
     private static final double FIELD_WIDTH_M = FIELD.getFieldWidth();
-    // enough to slowly correct gyro
+    // do not correct gyro
     private static final double POS_STD_DEV = 0.7;
-    private static final double ROTATION_STD_DEV = 25.0;
+    private static final double ROTATION_STD_DEV = 9999.0;
 
     private static final double MAX_ESTIMATE_AGE_SECONDS = 0.25;
 
