@@ -8,7 +8,6 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.subsystems.DriveInputs;
 import frc.robot.subsystems.EaseofLife;
-import frc.robot.util.MotorTelemetry;
     import edu.wpi.first.wpilibj.Timer;
 public class IntakeSubsystem extends SubsystemBase {
 
@@ -50,8 +49,7 @@ public class IntakeSubsystem extends SubsystemBase {
     // same thing except for it's the bottom sensor
     private boolean hasSeededBottom = false;
 
-    private final MotorTelemetry intakeRollerTelemetry;
-    private final MotorTelemetry intakeDropTelemetry;
+
 
     public IntakeSubsystem(TalonFX intakeMotor, TalonFX dropMotor,
                         DigitalInput upperSensor, DigitalInput lowerSensor, EaseofLife EaseOfLife, DriveInputs DriveInputs) {
@@ -62,8 +60,6 @@ public class IntakeSubsystem extends SubsystemBase {
         this.MotorMode = EaseOfLife;     
         dropMotor.setPosition(0.0);
         dropMotor.setControl(staticBrake);
-        this.intakeRollerTelemetry = new MotorTelemetry("Intake/Roller", intakeMotor);
-        this.intakeDropTelemetry   = new MotorTelemetry("Intake/Drop", dropMotor);
     }
 
     public void requestDown() {
@@ -178,8 +174,5 @@ public class IntakeSubsystem extends SubsystemBase {
             case IDLE -> {}
         }
         updateBounce();
-
-        intakeRollerTelemetry.publish();
-        intakeDropTelemetry.publish();
     }
 }

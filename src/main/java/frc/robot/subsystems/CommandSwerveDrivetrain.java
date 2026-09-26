@@ -28,7 +28,6 @@ import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 import com.pathplanner.lib.config.PIDConstants;
 import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
-import frc.robot.util.MotorTelemetry;
 
 /**
  * Class that extends the Phoenix 6 SwerveDrivetrain class and implements
@@ -47,20 +46,6 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     private static final Rotation2d kRedAlliancePerspectiveRotation = Rotation2d.kZero;
     /* Keep track if we've ever applied the operator perspective before or not */
     private boolean m_hasAppliedOperatorPerspective = false;
-
-    /*
-     * Per-module telemetry (temp/rps/degrees), published to NetworkTables under
-     * "robot/Drivetrain/ModuleN/Drive|Steer/...". Populated in the instance initializer
-     * below so it runs after super(...) regardless of which constructor overload is used.
-     */
-    private final MotorTelemetry[] m_moduleDriveTelemetry = new MotorTelemetry[4];
-    private final MotorTelemetry[] m_moduleSteerTelemetry = new MotorTelemetry[4];
-    {
-        for (int i = 0; i < 4; i++) {
-            m_moduleDriveTelemetry[i] = new MotorTelemetry("Drivetrain/Module" + i + "/Drive", getModule(i).getDriveMotor());
-            m_moduleSteerTelemetry[i] = new MotorTelemetry("Drivetrain/Module" + i + "/Steer", getModule(i).getSteerMotor());
-        }
-    }
 
     /* Swerve requests to apply during SysId characterization */
     private final SwerveRequest.SysIdSwerveTranslation m_translationCharacterization = new SwerveRequest.SysIdSwerveTranslation();
@@ -286,11 +271,6 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
                 );
                 m_hasAppliedOperatorPerspective = true;
             });
-        }
-
-        for (int i = 0; i < 4; i++) {
-            m_moduleDriveTelemetry[i].publish();
-            m_moduleSteerTelemetry[i].publish();
         }
     }
 

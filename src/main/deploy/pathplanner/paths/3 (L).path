@@ -8,40 +8,40 @@
       },
       "prevControl": null,
       "nextControl": {
-        "x": 7.143464539335168,
-        "y": 5.164143728379207
+        "x": 5.77958442569748,
+        "y": 5.517821312822292
       },
       "isLocked": false,
       "linkedName": "2 (L) End"
     },
     {
       "anchor": {
-        "x": 6.761449050943017,
-        "y": 6.841430482100891
+        "x": 7.823726719541073,
+        "y": 6.201722222222222
       },
       "prevControl": {
-        "x": 6.445092474618287,
-        "y": 5.832670833065432
+        "x": 7.15468325789785,
+        "y": 6.52912646940933
       },
       "nextControl": {
-        "x": 6.884503505078343,
-        "y": 7.233811666041838
+        "x": 8.193095226582358,
+        "y": 6.020967420904148
       },
       "isLocked": false,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 8.23579007645638,
-        "y": 6.668329713923209
+        "x": 8.048288888888889,
+        "y": 4.810988888888889
       },
       "prevControl": {
-        "x": 8.268874468026418,
-        "y": 7.1018684293919705
+        "x": 8.081373280458926,
+        "y": 5.24452760435765
       },
       "nextControl": {
-        "x": 8.18197329027228,
-        "y": 5.9631131678210885
+        "x": 7.994472102704789,
+        "y": 4.105772342786768
       },
       "isLocked": false,
       "linkedName": null
@@ -90,7 +90,21 @@
       "rotationDegrees": -103.86705806807187
     }
   ],
-  "constraintZones": [],
+  "constraintZones": [
+    {
+      "name": "Constraints Zone",
+      "minWaypointRelativePos": 0.0218068535825559,
+      "maxWaypointRelativePos": 0.3333333333333419,
+      "constraints": {
+        "maxVelocity": 3.0,
+        "maxAcceleration": 4.5,
+        "maxAngularVelocity": 540.0,
+        "maxAngularAcceleration": 720.0,
+        "nominalVoltage": 12.0,
+        "unlimited": false
+      }
+    }
+  ],
   "pointTowardsZones": [],
   "eventMarkers": [
     {
@@ -129,7 +143,7 @@
     "rotation": 100.50802214023238
   },
   "reversed": false,
-  "folder": "2cycles",
+  "folder": "left",
   "idealStartingState": {
     "velocity": 0.0,
     "rotation": -42.520180544825045

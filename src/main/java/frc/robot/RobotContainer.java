@@ -27,8 +27,9 @@ import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DigitalInput;
-import edu.wpi.first.wpilibj.DriverStation;
 
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.InstantCommand;
@@ -46,7 +47,6 @@ import frc.robot.subsystems.Mechanisms;
 import frc.robot.subsystems.robot.FeedSubsystem;
 import frc.robot.subsystems.robot.IntakeSubsystem;
 import frc.robot.subsystems.robot.ShooterSubsystem;
-import frc.robot.util.NetworkTables;
 import frc.robot.vision.Limelight;
 
 public class RobotContainer {
@@ -69,6 +69,7 @@ public class RobotContainer {
         () -> joystick.getLeftX(), 
         joystick
     );
+    private SendableChooser<Command> autoChooser;
     
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
     
@@ -132,6 +133,9 @@ public class RobotContainer {
             
         drivetrain.configureAutoBuilder(); 
         configureBindings();
+
+        autoChooser = AutoBuilder.buildAutoChooser("None");
+        SmartDashboard.putData("Auto", autoChooser);
     }
 
     private void configureBindings() {
@@ -220,25 +224,10 @@ public class RobotContainer {
 
     }
 
-    /**
-     * Which side auto to run, per the {@code robot/Auto/UseLeftAuto} NetworkTables boolean
-     * (flip it from the dashboard before enabling autonomous). Also republished continuously
-     * to {@code robot/Auto/SelectedAutoName} -- see {@link Robot#robotPeriodic()} -- so you
-     * can confirm what will run before you enable.
-     */
-    public String getSelectedAutoName() {
-        return NetworkTables.isUseLeftAuto() ? Constants.LEFT_AUTO_NAME : Constants.RIGHT_AUTO_NAME;
-    }
-
     public Command getAutonomousCommand() {
-        String autoName = getSelectedAutoName();
-        try {
-            Command auto = AutoBuilder.buildAuto(autoName);
-            System.out.println("auto: " + autoName);
-            return auto;
-        } catch (Exception e) {
-            DriverStation.reportError("Failed to build auto \"" + autoName + "\": " + e.getMessage(), false); 
-            return Commands.none();
-        }
+        Command selected = autoChooser.getSelected();
+        if (selected == null) return Commands.none();
+        System.out.println("auto: " + selected.getName());
+        return selected;
     }
 }

@@ -10,7 +10,6 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
-import edu.wpi.first.networktables.IntegerArrayPublisher;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.networktables.StructPublisher;
@@ -33,7 +32,6 @@ public class Limelight extends SubsystemBase {
 
     private final String name;
     private final StructPublisher<Pose2d> posePublisher;
-    private final IntegerArrayPublisher visibleTagIdsPublisher;
 
     private Optional<Pose2d> latestEstimate = Optional.empty();
     private double latestEstimateTimestamp = 0.0;
@@ -42,28 +40,6 @@ public class Limelight extends SubsystemBase {
         this.name = name;
         NetworkTable telemetryTable = NetworkTableInstance.getDefault().getTable(name);
         this.posePublisher = telemetryTable.getStructTopic("EstimatedPose", Pose2d.struct).publish();
-        this.visibleTagIdsPublisher = telemetryTable.getIntegerArrayTopic("VisibleTagIDs").publish();
-    }
-
-    /**
-     * Publishes the AprilTag IDs currently visible to this camera to NetworkTables
-     * (empty array when none are in view). Runs every {@link #periodic()} tick,
-     * independent of whether a full pose estimate is available, so it reflects what
-     * the camera sees right now.
-     */
-    private void publishVisibleTags(PoseEstimate estimate) {
-        LimelightHelpers.RawFiducial[] fiducials =
-            (estimate != null && estimate.rawFiducials != null) ? estimate.rawFiducials : new LimelightHelpers.RawFiducial[0];
-        long[] ids = new long[fiducials.length];
-        for (int i = 0; i < fiducials.length; i++) {
-            ids[i] = fiducials[i].id;
-        }
-        visibleTagIdsPublisher.set(ids);
-    }
-
-    @Override
-    public void periodic() {
-        publishVisibleTags(LimelightHelpers.getBotPoseEstimate_wpiBlue(name));
     }
     private static boolean isInField(Translation2d t) {
         return t.getX() >= 0 && t.getX() <= FIELD_LENGTH_M
