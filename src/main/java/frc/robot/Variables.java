@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Variables {
     
     
-    public static final double AlignToHubP = 15.5;
+    public static final double AlignToHubP = 10.5;
     public static final double AlignToHubI = 0;
     public static final double AlignToHubD = 0.3;
 
@@ -19,20 +19,20 @@ public class Variables {
     public static final double AlignToAllianceWallD = 0.2;
     // controller stoff
 
-    public final static SlewRateLimiter xLimiter = new SlewRateLimiter(99);
-    public final static SlewRateLimiter yLimiter = new SlewRateLimiter(99);
+    public final static SlewRateLimiter xLimiter = new SlewRateLimiter(4.5);
+    public final static SlewRateLimiter yLimiter = new SlewRateLimiter(4.5);
     // no more controller stuph 
     public static double FEED_SPEED = 0.7; // in percentage (0.8 == 80%)
     public static double SHOOTER_SPEED = 30;
 
     public static final double airTimeScalarSeconds = 1;
-    public static final double MaxAngularRate = 2.5;
+    public static final double MaxAngularRate = 2;
 
     public static final double maxYawRateForVision = 6;
 
 
     private static final double BASE_SPEED = TunerConstants.kSpeedAt12Volts.in(MetersPerSecond);
-    private static final double DEFAULT_SPEED_MULTIPLIER = 0.7;
+    private static final double DEFAULT_SPEED_MULTIPLIER = 0.5;
 
     // Named speed-limit requests. Effective MaxSpeed = BASE_SPEED * (min of all active requests).
     private static final Map<String, Double> speedLimitRequests = new ConcurrentHashMap<>();

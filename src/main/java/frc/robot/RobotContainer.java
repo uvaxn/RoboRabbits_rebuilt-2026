@@ -6,8 +6,7 @@ package frc.robot;
  * Left Joystick  -- Moves robot
  * Right Joystick -- Rotates robot
  * Left Trigger   -- Intake (drops down and intakes)
- * Right Trigger  -- Shoot (lifts intake and shoots)
- * Right Bumper & Trigger -- Continously lifts intake up and down while shooting
+ * Right Trigger  -- Shoot (raises intake, then feeds once the shooter is ready)
  * Left Bumper    -- Reset field-centric heading
  * X Button       -- Auto-align to nearest AprilTag
  * Y Button       -- Auto-align to alliance Wall
@@ -117,7 +116,7 @@ public class RobotContainer {
     );
     // Commands
     public RobotContainer() {
-        NamedCommands.registerCommand("shoot",      new InstantCommand(() -> mechanisms.FullHopperShoot()));
+        NamedCommands.registerCommand("shoot",      new InstantCommand(() -> mechanisms.intakeFeedShoot()));
         NamedCommands.registerCommand("stop shoot", new InstantCommand(() -> mechanisms.StopShoot()));
         NamedCommands.registerCommand("intake",     new InstantCommand(intakes::start, intakes));
         NamedCommands.registerCommand("stop intake",  new InstantCommand(intakes::stop,  intakes));
@@ -140,7 +139,7 @@ public class RobotContainer {
 
     private void configureBindings() {
 
-        drivetrain.setDefaultCommand( // reminder that this chunk of code basically controls the movement of the robot
+        drivetrain.setDefaultCommand( // remainder that this chunk of code basically controls the movement of the robot
             drivetrain.applyRequest(() ->
                 drive.withVelocityX(driveInputs.getX())
                     .withVelocityY(driveInputs.getY())
@@ -156,7 +155,7 @@ public class RobotContainer {
         // Wheel point mode
         joystick.a().whileTrue(drivetrain.applyRequest(() ->
             point.withModuleDirection(new Rotation2d(-joystick.getLeftY(), -joystick.getLeftX()))
-        ));
+        )); 
 
         // SysId routines
         //joystick.back().and(joystick.y()).whileTrue(drivetrain.sysIdDynamic(Direction.kForward));
@@ -193,7 +192,7 @@ public class RobotContainer {
             .onTrue(new InstantCommand(mechanisms::StartShooting, mechanisms))
             .onFalse(new InstantCommand(mechanisms::StopShoot, mechanisms));
         joystick.rightTrigger()
-            .onTrue(new InstantCommand(mechanisms::FullHopperMode, mechanisms));
+            .onTrue(new InstantCommand(mechanisms::intakeFeed, mechanisms));
         joystick.rightTrigger().whileTrue(new AlignToPoint(
             easeOfLife,
             drivetrain,
@@ -203,12 +202,10 @@ public class RobotContainer {
         ));
 
 
-        joystick.leftBumper()
-            .onTrue(new InstantCommand(mechanisms::StartFixedShooting, mechanisms))
+        // Right bumper: align to alliance wall and shoot.
+        joystick.rightBumper()
+            .onTrue(new InstantCommand(mechanisms::intakeFeedShoot, mechanisms))
             .onFalse(new InstantCommand(mechanisms::StopShoot, mechanisms));
-
-
-        // Right bumper: align to alliance wall only, no shooting.
         joystick.rightBumper().whileTrue(new AlignToAllianceWall(
             drivetrain,
             easeOfLife,

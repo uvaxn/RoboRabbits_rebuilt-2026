@@ -10,21 +10,11 @@ import frc.robot.Variables;
 import frc.robot.subsystems.EaseofLife;
 import frc.robot.util.NetworkTables;
 import frc.robot.util.ShooterCalculation;
-
-/**
- * Shooter + feed subsystem. Both {@code shooterR} and {@code shooterL} run their own
- * closed-loop velocity control with identical SV/PID gains (the gains below are already
- * tuned don't change them without retuning on the robot). {@code shooterL} is mounted
- * opposite {@code shooterR}, so it's driven at the negated target velocity instead of
- * being a hardware {@link com.ctre.phoenix6.controls.Follower}. Feed motors run open-loop
- * through {@link EaseofLife}.
- */
 public class ShooterSubsystem extends SubsystemBase {
     private final TalonFX shooterR;
     private final TalonFX shooterL;
     EaseofLife MotorMode;
     private boolean running = false;
-    private boolean fixedrunning = false;
     public ShooterSubsystem(TalonFX shooterR, TalonFX shooterL, EaseofLife EaseOfLife) {
         this.shooterR  = shooterR;
         this.shooterL  = shooterL;
@@ -77,14 +67,8 @@ public class ShooterSubsystem extends SubsystemBase {
         MotorMode.setVelocity(shooterL, Variables.SHOOTER_SPEED);
         Variables.requestSpeedLimit("shooters", 0.1);
     }
-    public void fixstart() {
-        fixedrunning = true;
-        MotorMode.setVelocity(shooterR, -70);
-        MotorMode.setVelocity(shooterL, 70);
-    }
     public void stop() {
         running = false;
-        fixedrunning = false;
         MotorMode.setSpeed(shooterR, 0);
         MotorMode.setSpeed(shooterL, 0);
         Variables.clearSpeedLimit("shooters");
@@ -97,8 +81,8 @@ public class ShooterSubsystem extends SubsystemBase {
     public boolean atSpeed() {
         double currentR = shooterR.getVelocity().getValueAsDouble();
         double currentL = shooterL.getVelocity().getValueAsDouble();
-        boolean rightAtSpeed = Math.abs(currentR - (-Variables.SHOOTER_SPEED)) < 2.0;
-        boolean leftAtSpeed  = Math.abs(currentL - (Variables.SHOOTER_SPEED)) < 2.0;
+        boolean rightAtSpeed = Math.abs(currentR - (-Variables.SHOOTER_SPEED)) < 5.0;
+        boolean leftAtSpeed  = Math.abs(currentL - (Variables.SHOOTER_SPEED)) < 5.0;
         return rightAtSpeed && leftAtSpeed;
     }
 
@@ -116,9 +100,7 @@ public class ShooterSubsystem extends SubsystemBase {
             Variables.SHOOTER_SPEED = ShooterCalculation.calculateShooterSpeed(MotorMode.getDistToHub());
         }
         NetworkTables.putTargetShooterSpeed(Variables.SHOOTER_SPEED);
-        if (!fixedrunning) {
-            MotorMode.setVelocity(shooterR, -Variables.SHOOTER_SPEED);
-            MotorMode.setVelocity(shooterL, Variables.SHOOTER_SPEED);
-        }
+        MotorMode.setVelocity(shooterR, -Variables.SHOOTER_SPEED);
+        MotorMode.setVelocity(shooterL, Variables.SHOOTER_SPEED);
     }
 }

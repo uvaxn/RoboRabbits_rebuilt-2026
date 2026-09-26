@@ -21,7 +21,7 @@ public class FeedSubsystem extends SubsystemBase {
 
     public void start() {
         rollersStart();
-        intake.startBounce();
+        intake.startFeed();
     }
     public void rollersStart() {
         easeOfLife.setSpeed(lowerFeed, -Variables.FEED_SPEED);
@@ -30,7 +30,7 @@ public class FeedSubsystem extends SubsystemBase {
     public void stop() {
         easeOfLife.setSpeed(lowerFeed, 0);
         easeOfLife.setSpeed(upperFeed, 0);
-        intake.stopBounce();
+        intake.stop();
         if (!intake.isAtBottom()) {
             intake.requestDown();
         }

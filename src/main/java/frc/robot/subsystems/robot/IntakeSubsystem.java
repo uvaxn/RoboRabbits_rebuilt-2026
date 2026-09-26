@@ -3,12 +3,14 @@ package frc.robot.subsystems.robot;
 import com.ctre.phoenix6.controls.CoastOut;
 import com.ctre.phoenix6.controls.StaticBrake;
 import com.ctre.phoenix6.hardware.TalonFX;
+
+import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.subsystems.DriveInputs;
 import frc.robot.subsystems.EaseofLife;
-    import edu.wpi.first.wpilibj.Timer;
+import frc.robot.util.NetworkTables;
 public class IntakeSubsystem extends SubsystemBase {
 
     private final TalonFX intakeMotor;
@@ -19,9 +21,6 @@ public class IntakeSubsystem extends SubsystemBase {
     private static final double DROP_SPEED = 0.15;
     private static final double LIFT_SPEED = 0.15;
 
-    private static final double AGITATE_DROP_SPEED = 0.3;
-    private static final double AGITATE_LIFT_SPEED = 0.1;
-
     private static final double INTAKE_COLLECT_SPEED = -0.8; // collecting from ground
     private static final double INTAKE_FEED_SPEED = -0.65; // for pushing balls to shooter
     private final CoastOut    coastOut    = new CoastOut();
@@ -29,20 +28,6 @@ public class IntakeSubsystem extends SubsystemBase {
 
     private enum DropState { IDLE, MOVING_DOWN, MOVING_UP }
 
-
-    private final Timer bounceTimer = new Timer();
-
-    private static final double BOUNCE_UP_TIME = 1.2; // time held at top
-
-    private enum BounceState {
-        
-        OFF,
-        GOING_UP,
-        GOING_DOWN
-    }
-
-    private BounceState bounceState = BounceState.OFF;
-    private boolean bouncing = false;
     private DropState state = DropState.IDLE;
     // what "Seeded" means in these variables is basically has it set off the top sensor (it stores that) 
     private boolean hasSeededTop    = true; // the nail is somewhat bent at the top, so it wont set off the top sensor too well. Best to leave this true.
@@ -72,52 +57,18 @@ public class IntakeSubsystem extends SubsystemBase {
         state = DropState.MOVING_UP;
 
     }
-    public void startBounce() {
-        bouncing = true;
-        bounceState = BounceState.GOING_UP;
+    /** Spins the intake roller to push balls up toward the feed rollers. */
+    public void startFeed() {
         MotorMode.setSpeed(intakeMotor, INTAKE_FEED_SPEED);
-        requestUp();
-        bounceTimer.restart();
     }
 
-    public void stopBounce() {
-        bouncing = false;
-        bounceState = BounceState.OFF;
-        MotorMode.setSpeed(intakeMotor, 0);
-        bounceTimer.stop();
-        bounceTimer.reset();
-        // return the arm to the bottom at the normal drop speed.
-        if (!isAtBottom()) {
-            requestDown();
-        }
-    }
-    private void updateBounce() {
-            if (!bouncing) return;
-
-            switch (bounceState) {
-                case GOING_UP -> {
-                    // Keep going up until the timer expires
-                    if (bounceTimer.hasElapsed(BOUNCE_UP_TIME)) {
-                        requestDown();
-                        bounceState = BounceState.GOING_DOWN;
-                    }
-                }
-                case GOING_DOWN -> {
-                    // Once bottom sensor is hit, go back up
-                    if (isAtBottom()) {
-                        requestUp();
-                        bounceTimer.restart();
-                        bounceState = BounceState.GOING_UP;
-                    }
-                }
-                case OFF -> {}
-            }
-        }
     public void start() {
         MotorMode.setSpeed(intakeMotor, INTAKE_COLLECT_SPEED);
+        NetworkTables.putRobotState("INTAKE");
     }
     public void stop() {
         MotorMode.setSpeed(intakeMotor, 0);
+        NetworkTables.putRobotState("STOPPED INTAKE");
     }
  
     /** @return true when the arm is not moving useful for command isFinished() checks */
@@ -156,8 +107,7 @@ public class IntakeSubsystem extends SubsystemBase {
                     dropMotor.setControl(coastOut);
                     state = DropState.IDLE;
                 } else {
-                    double speed = bouncing ? AGITATE_DROP_SPEED : DROP_SPEED;
-                    dropMotor.set(-speed);
+                    dropMotor.set(-DROP_SPEED);
                 }
             }
 
@@ -166,13 +116,11 @@ public class IntakeSubsystem extends SubsystemBase {
                     dropMotor.setControl(staticBrake);
                     state = DropState.IDLE;
                 } else {
-                    double speed = bouncing ? AGITATE_LIFT_SPEED : LIFT_SPEED;
-                    dropMotor.set(speed);
+                    dropMotor.set(LIFT_SPEED);
                 }
             }
 
             case IDLE -> {}
         }
-        updateBounce();
     }
 }

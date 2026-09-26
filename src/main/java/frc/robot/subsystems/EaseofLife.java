@@ -78,7 +78,7 @@ public class EaseofLife extends SubsystemBase {
     public double getAlignI() { return NetworkTables.getAlignI(); }
     public double getAlignD() { return NetworkTables.getAlignD(); }
 
-    //  read live values from dashboard — AlignToAllianceWall
+    //  read live values from dashboard  AlignToAllianceWall
     public double getAlignWallP() { return NetworkTables.getAlignWallP(); }
     public double getAlignWallI() { return NetworkTables.getAlignWallI(); }
     public double getAlignWallD() { return NetworkTables.getAlignWallD(); }

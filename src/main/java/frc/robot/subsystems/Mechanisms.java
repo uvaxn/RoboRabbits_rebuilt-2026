@@ -13,10 +13,12 @@ public class Mechanisms extends SubsystemBase {
     private FeedSubsystem feeds;
     private boolean wantIntake = false;
     private boolean isIntakeOn = false;
-    private boolean isFHOn = false;
-    private boolean isROn = false;
-    private double startTimeafterSpinning = 1.0;
+    private boolean isFeeding = false;
+    private boolean armRaised = false;
+    private double startTimeafterSpinning = 0.6;
+    private static final double FEED_RAISE_TIME = 2.0; // seconds to hold the intake up before feeding fully starts
     private final Timer jamTimer = new Timer();
+    private final Timer feedTimer = new Timer();
     private boolean shooterReady = false;
 
     public Mechanisms(ShooterSubsystem ShooterSubsystem, IntakeSubsystem IntakeSubsystem, FeedSubsystem FeedSubsystem) {
@@ -31,26 +33,20 @@ public class Mechanisms extends SubsystemBase {
         jamTimer.restart();
         jamTimer.start();
     }
-    public void StartFixedShooting() {
-        NetworkTables.putRobotState("SPINNING UP");
-        shooterReady = false;
-        shooters.fixstart();
-        feeds.rollersStart();
-        isROn = true;
-        jamTimer.restart();
-        jamTimer.start();
-    }
-    /** Switches feed behavior to Full-Hopper (continuous intake bounce */
-    public void FullHopperMode() {
-        isFHOn = true;
-        isROn = false;
+
+    public void intakeFeed() {
+        isFeeding = true;
+        armRaised = false;
         shooterReady = false; // re-arm so periodic() re-fires this mode's entry action
+        intakes.requestUp();
+        feedTimer.restart();
+        feedTimer.start();
     }
 
-    /** spin up and go straight to Full-Hopper mode, purely for auto. */
-    public void FullHopperShoot() {
+    /** spin up and go straight to intake-feed mode, purely for auto. */
+    public void intakeFeedShoot() {
         StartShooting();
-        FullHopperMode();
+        intakeFeed();
      }
 
     public void Intake() {
@@ -70,8 +66,8 @@ public class Mechanisms extends SubsystemBase {
         NetworkTables.putRobotState("STOPPED FIRING");
         shooters.stop();
         feeds.stop();
-        isFHOn = false;
-        isROn = false;
+        isFeeding = false;
+        armRaised = false;
         shooterReady = false;
     }
 
@@ -82,17 +78,13 @@ public class Mechanisms extends SubsystemBase {
             intakes.start();
             isIntakeOn = true;
         }
-        if (isROn && shooters.atSpeed() && !shooterReady) {
-            NetworkTables.putRobotState("R SHOOTER READY");
-            feeds.rollersStart();
-            intakes.requestUp();
-            shooterReady = true;
+        if (isFeeding && !armRaised && feedTimer.hasElapsed(FEED_RAISE_TIME)) {
+            armRaised = true;
         }
-        if  (isFHOn && (shooters.atSpeed() || jamTimer.hasElapsed(startTimeafterSpinning)) && !shooterReady) {
-            NetworkTables.putRobotState("FH SHOOTER READY");
+        if (isFeeding && armRaised && (shooters.atSpeed() || jamTimer.hasElapsed(startTimeafterSpinning)) && !shooterReady) {
+            NetworkTables.putRobotState("SHOOTER READY");
             feeds.start();
             shooterReady = true;
-            intakes.start();
         }
     }
 }

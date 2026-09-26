@@ -31,17 +31,6 @@ public class AlignToPoint extends Command {
     private final DoubleSupplier leftSupplier;
 
     private Rotation2d targetDirection = Rotation2d.kZero;
-
-    // Note: cameraSubsystem is not a dependency here -- alignment uses the
-    // drivetrain's continuously-fused pose (odometry + vision, via
-    // addVisionMeasurement in Robot.java), not the raw camera reading directly.
-    // That fused pose is never "unavailable": it keeps dead-reckoning through
-    // brief vision dropouts instead of the align command losing its target the
-    // moment a tag glares out or gets briefly occluded.
-    //
-    // targetSupplier is called fresh every loop in execute(), so a dynamic
-    // target (e.g. Landmarks::hubOrNearestShot bound to the current pose) stays
-    // correct as the robot moves, not just whatever it was at construction time.
     public AlignToPoint(
             EaseofLife easeOfLife,
             CommandSwerveDrivetrain swerveDrive,
@@ -80,11 +69,12 @@ public class AlignToPoint extends Command {
     public boolean isAimed() {
         final Rotation2d currentHeading = swerveDrive.getState().Pose.getRotation();
         return Math.abs(currentHeading.minus(targetDirection).getDegrees()) < AIM_TOLERANCE_DEGREES;
+    
+
     }
 
     @Override
     public void execute() {
-
         request.HeadingController.setPID(
                 easeOfLife.getAlignP(),
                 easeOfLife.getAlignI(),
