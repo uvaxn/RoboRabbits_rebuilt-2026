@@ -8,28 +8,25 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Variables;
 import frc.robot.subsystems.EaseofLife;
+import frc.robot.util.MotorTelemetry;
 import frc.robot.util.NetworkTables;
 import frc.robot.util.ShooterCalculation;
 
-/**
- * Shooter + feed subsystem. Both {@code shooterR} and {@code shooterL} run their own
- * closed-loop velocity control with identical SV/PID gains (the gains below are already
- * tuned don't change them without retuning on the robot). {@code shooterL} is mounted
- * opposite {@code shooterR}, so it's driven at the negated target velocity instead of
- * being a hardware {@link com.ctre.phoenix6.controls.Follower}. Feed motors run open-loop
- * through {@link EaseofLife}.
- */
 public class ShooterSubsystem extends SubsystemBase {
     private final TalonFX shooterR;
     private final TalonFX shooterL;
     EaseofLife MotorMode;
     private boolean running = false;
     private boolean fixedrunning = false;
+    private final MotorTelemetry shooterRightTelemetry;
+    private final MotorTelemetry shooterLeftTelemetry;
     public ShooterSubsystem(TalonFX shooterR, TalonFX shooterL, EaseofLife EaseOfLife) {
         this.shooterR  = shooterR;
         this.shooterL  = shooterL;
         this.MotorMode = EaseOfLife;
         configureShooter(shooterR, shooterL);
+        this.shooterRightTelemetry = new MotorTelemetry("Shooter/Right", shooterR);
+        this.shooterLeftTelemetry  = new MotorTelemetry("Shooter/Left", shooterL);
     }
 
     private void configureShooter(TalonFX right, TalonFX left) {
@@ -104,6 +101,9 @@ public class ShooterSubsystem extends SubsystemBase {
 
 
     public void periodic() {
+        shooterRightTelemetry.publish();
+        shooterLeftTelemetry.publish();
+
         NetworkTables.putShooterSpeed(shooterR.getVelocity().getValueAsDouble());
 
         if (!running) {

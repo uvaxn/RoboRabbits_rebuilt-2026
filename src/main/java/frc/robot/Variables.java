@@ -26,13 +26,13 @@ public class Variables {
     public static double SHOOTER_SPEED = 30;
 
     public static final double airTimeScalarSeconds = 1;
-    public static final double MaxAngularRate = 2.5;
+    public static final double MaxAngularRate = 2;
 
     public static final double maxYawRateForVision = 6;
 
 
     private static final double BASE_SPEED = TunerConstants.kSpeedAt12Volts.in(MetersPerSecond);
-    private static final double DEFAULT_SPEED_MULTIPLIER = 0.7;
+    private static final double DEFAULT_SPEED_MULTIPLIER = 0.5;
 
     // Named speed-limit requests. Effective MaxSpeed = BASE_SPEED * (min of all active requests).
     private static final Map<String, Double> speedLimitRequests = new ConcurrentHashMap<>();

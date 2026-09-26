@@ -6,6 +6,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import frc.robot.constants.Constants;
 import frc.robot.vision.LimelightHelpers;
+import frc.robot.util.NetworkTables;
 import com.ctre.phoenix6.SignalLogger;
 public class Robot extends TimedRobot {
     private Command m_autonomousCommand;
@@ -24,6 +25,8 @@ public class Robot extends TimedRobot {
 
 
         CommandScheduler.getInstance().run();
+
+        NetworkTables.putSelectedAutoName(robotContainer.getSelectedAutoName());
 
         String mode = DriverStation.isDisabled() ? "Disabled"
             : DriverStation.isAutonomous() ? "Autonomous"

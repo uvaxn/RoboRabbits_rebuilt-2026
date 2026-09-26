@@ -4,6 +4,7 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.EaseofLife;
 import frc.robot.Variables;
+import frc.robot.util.MotorTelemetry;
 
 public class FeedSubsystem extends SubsystemBase {
     private IntakeSubsystem intake;
@@ -12,11 +13,16 @@ public class FeedSubsystem extends SubsystemBase {
     private TalonFX upperFeed;
     private TalonFX lowerFeed;
 
+    private final MotorTelemetry feedUpperTelemetry;
+    private final MotorTelemetry feedLowerTelemetry;
+
     public FeedSubsystem(IntakeSubsystem IntakeSubsystem, EaseofLife EaseofLife, TalonFX lowerFeed, TalonFX upperFeed) {
         this.intake = IntakeSubsystem;
         this.easeOfLife = EaseofLife;
         this.lowerFeed = lowerFeed;
         this.upperFeed = upperFeed;
+        this.feedUpperTelemetry = new MotorTelemetry("Feed/Upper", upperFeed);
+        this.feedLowerTelemetry = new MotorTelemetry("Feed/Lower", lowerFeed);
     }
 
     public void start() {
@@ -37,5 +43,8 @@ public class FeedSubsystem extends SubsystemBase {
     }
 
     @Override
-    public void periodic() {}
+    public void periodic() {
+        feedUpperTelemetry.publish();
+        feedLowerTelemetry.publish();
+    }
 }

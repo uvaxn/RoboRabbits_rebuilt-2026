@@ -19,6 +19,10 @@ public class NetworkTables {
     // autoalign
     private static final DoublePublisher targetAngle = rbtTable.getDoubleTopic("AutoAlign/TargetAngleDeg").publish();
 
+    private static final BooleanPublisher useLeftAutoPub = rbtTable.getBooleanTopic("Auto/UseLeftAuto").publish();
+    private static final BooleanSubscriber useLeftAutoSub = rbtTable.getBooleanTopic("Auto/UseLeftAuto").subscribe(true);
+    private static final StringPublisher selectedAutoNamePub = rbtTable.getStringTopic("Auto/SelectedAutoName").publish();
+
     // ease of life
     private static final StringPublisher currentShift = infoTable.getStringTopic("EaseofLife/CurrentShift").publish();
     private static final DoublePublisher shiftTimeRemaining = infoTable.getDoubleTopic("EaseofLife/ShiftTimeRemaining").publish();
@@ -54,8 +58,11 @@ public class NetworkTables {
     static {
         shooterSpeedSetpointPub.set(Variables.SHOOTER_SPEED);
         manualShooterOverridePub.set(false);
+        useLeftAutoPub.set(true);
     }
     public static void putTargetAngle(double deg)   { targetAngle.set(deg); }
+    public static boolean isUseLeftAuto()               { return useLeftAutoSub.get(); }
+    public static void putSelectedAutoName(String name) { selectedAutoNamePub.set(name); }
     public static void putCurrentShift(String shift){ currentShift.set(shift); }
     public static void putShiftTime(double time)    { shiftTimeRemaining.set(time); }
     public static void isHubActive(boolean active)  { isHubActive.set(active); }
