@@ -12,7 +12,7 @@ public class batterychecker {
 private final Alert lowBattery =
         new Alert("be careful with this battery voltage.", AlertType.kWarning);
     private final Alert criticalBattery =
-            new Alert("CHANGE THE BATTERY NOW!", AlertType.kError);
+            new Alert("(comp) CHANGE THE BATTERY NOW!", AlertType.kError);
 
     public void check() {
          double batteryVoltage = RobotController.getBatteryVoltage();
