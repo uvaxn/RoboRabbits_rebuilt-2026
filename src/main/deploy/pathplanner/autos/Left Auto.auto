@@ -31,13 +31,13 @@
         {
           "type": "wait",
           "data": {
-            "waitTime": 5.0
+            "waitTime": 6.5
           }
         },
         {
-          "type": "named",
+          "type": "path",
           "data": {
-            "name": "stop shoot"
+            "pathName": "3 (L)"
           }
         }
       ]

@@ -50,6 +50,7 @@ public class Robot extends TimedRobot {
             CommandScheduler.getInstance().cancel(m_autonomousCommand);
         }
         robotContainer.easeOfLife.teleopInit();
+        robotContainer.mechanisms.StopShoot();
         LimelightHelpers.SetIMUMode(LL_NAME, 4); // use the ll4 imu, and swerves gyro.
     }
     @Override public void disabledInit() {

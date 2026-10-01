@@ -14,12 +14,15 @@ public class Mechanisms extends SubsystemBase {
     private boolean wantIntake = false;
     private boolean isIntakeOn = false;
     private boolean isFeeding = false;
-    private boolean armRaised = false;
-    private double startTimeafterSpinning = 0.6;
-    private static final double FEED_RAISE_TIME = 2.0; // seconds to hold the intake up before feeding fully starts
+    private boolean raising = false;
+    private double startTimeafterSpinning = 0.5;
+    private static final double RAISE_HOLD_TIME = 2.0; // wait this long after requesting up, then request down
     private final Timer jamTimer = new Timer();
-    private final Timer feedTimer = new Timer();
+    private final Timer raiseTimer = new Timer();
     private boolean shooterReady = false;
+
+    private enum RaiseStage { UP1, DOWN }
+    private RaiseStage raiseStage = RaiseStage.UP1;
 
     public Mechanisms(ShooterSubsystem ShooterSubsystem, IntakeSubsystem IntakeSubsystem, FeedSubsystem FeedSubsystem) {
         this.shooters = ShooterSubsystem;
@@ -36,14 +39,10 @@ public class Mechanisms extends SubsystemBase {
 
     public void intakeFeed() {
         isFeeding = true;
-        armRaised = false;
+        raising = false;
         shooterReady = false; // re-arm so periodic() re-fires this mode's entry action
-        intakes.requestUp();
-        feedTimer.restart();
-        feedTimer.start();
     }
 
-    /** spin up and go straight to intake-feed mode, purely for auto. */
     public void intakeFeedShoot() {
         StartShooting();
         intakeFeed();
@@ -67,7 +66,7 @@ public class Mechanisms extends SubsystemBase {
         shooters.stop();
         feeds.stop();
         isFeeding = false;
-        armRaised = false;
+        raising = false;
         shooterReady = false;
     }
 
@@ -78,13 +77,33 @@ public class Mechanisms extends SubsystemBase {
             intakes.start();
             isIntakeOn = true;
         }
-        if (isFeeding && !armRaised && feedTimer.hasElapsed(FEED_RAISE_TIME)) {
-            armRaised = true;
-        }
-        if (isFeeding && armRaised && (shooters.atSpeed() || jamTimer.hasElapsed(startTimeafterSpinning)) && !shooterReady) {
+        if (isFeeding && !shooterReady && (shooters.atSpeed() || jamTimer.hasElapsed(startTimeafterSpinning))) {
             NetworkTables.putRobotState("SHOOTER READY");
             feeds.start();
             shooterReady = true;
+        }
+        if (isFeeding && shooterReady && !raising) {
+            raising = true;
+            raiseStage = RaiseStage.UP1;
+            intakes.requestUp();
+            raiseTimer.restart();
+            raiseTimer.start();
+        }
+        if (raising) {
+            switch (raiseStage) {
+                case UP1 -> {
+                    if (raiseTimer.hasElapsed(RAISE_HOLD_TIME)) {
+                        raiseStage = RaiseStage.DOWN;
+                        intakes.requestDown();
+                    }
+                }
+                case DOWN -> {
+                    if (intakes.isAtBottom()) {
+                        intakes.requestUp();
+                        raising = false; // sequence done
+                    }
+                }
+            }
         }
     }
 }
