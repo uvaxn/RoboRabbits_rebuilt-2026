@@ -46,7 +46,7 @@ public class Limelight extends SubsystemBase {
     private static final double SINGLE_TAG_MAX_DISTANCE_METERS = 2.0;
     private static final double SINGLE_TAG_MAX_AMBIGUITY = 0.1;
 
-    private static final double STD_DEV_BASE_1_TAG = 1.5;       // barely trusted
+    private static final double STD_DEV_BASE_1_TAG = 3;       // barely trusted
     private static final double STD_DEV_BASE_2_TAG = 0.5;       // moderately trusted
     private static final double STD_DEV_BASE_3_PLUS_TAG = 0.1;  // strongly trusted
 

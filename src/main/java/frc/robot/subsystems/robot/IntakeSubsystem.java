@@ -1,10 +1,13 @@
 package frc.robot.subsystems.robot;
 
+import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.controls.CoastOut;
 import com.ctre.phoenix6.controls.StaticBrake;
 import com.ctre.phoenix6.hardware.TalonFX;
 
 import edu.wpi.first.wpilibj.DigitalInput;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.subsystems.DriveInputs;
@@ -42,8 +45,32 @@ public class IntakeSubsystem extends SubsystemBase {
         this.upperSensor = upperSensor;
         this.lowerSensor = lowerSensor;
         this.MotorMode = EaseOfLife;     
+        applyCurrentLimits(intakeMotor, "Intake", 70.0, 55.0, 25.0, 1.0);
+        applyCurrentLimits(dropMotor, "Intake drop", 50.0, 40.0, 10.0, 1.0);
         dropMotor.setPosition(0.0);
         dropMotor.setControl(staticBrake);
+    }
+    private void applyCurrentLimits(TalonFX motor, String label, double statorAmps, double supplyAmps,
+                                    double supplyLowerAmps, double supplyLowerTimeSec) {
+        CurrentLimitsConfigs limits = new CurrentLimitsConfigs();
+        limits.StatorCurrentLimit = statorAmps;
+        limits.StatorCurrentLimitEnable = true;
+        limits.SupplyCurrentLimit = supplyAmps;
+        limits.SupplyCurrentLimitEnable = true;
+        limits.SupplyCurrentLowerLimit = supplyLowerAmps;
+        limits.SupplyCurrentLowerTime = supplyLowerTimeSec;
+
+        StatusCode status = null;
+        boolean success = false;
+        for (int attempt = 0; attempt < 5 && !success; attempt++) {
+            status = motor.getConfigurator().apply(limits);
+            success = status.isOK();
+        }
+        if (!success) {
+            DriverStation.reportWarning(
+                label + " motor " + motor.getDeviceID() + " failed to apply current limits: " + status,
+                false);
+        }
     }
 
     public void requestDown() {
@@ -70,17 +97,15 @@ public class IntakeSubsystem extends SubsystemBase {
         NetworkTables.putRobotState("STOPPED INTAKE");
     }
  
-    /** @return true when the arm is not moving useful for command isFinished() checks */
+
     public boolean isIdle() {
         return state == DropState.IDLE;
     }
 
-    /** @return true when arm is fully down and intake is collecting */
     public boolean isCollecting() {
         return state == DropState.IDLE && isAtBottom();
     }
 
-    /** @return true when arm is fully up */
     public boolean isFullyUp() {
         return state == DropState.IDLE && isAtTop();
     }
