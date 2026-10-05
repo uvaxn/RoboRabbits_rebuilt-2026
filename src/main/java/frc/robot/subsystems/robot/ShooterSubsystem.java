@@ -69,8 +69,8 @@ public class ShooterSubsystem extends SubsystemBase {
     }
     public void stop() {
         running = false;
-        MotorMode.setSpeed(shooterR, 0);
-        MotorMode.setSpeed(shooterL, 0);
+        MotorMode.setVelocity(shooterR, -30);
+        MotorMode.setVelocity(shooterL, 30);
         Variables.clearSpeedLimit("shooters");
     }
 

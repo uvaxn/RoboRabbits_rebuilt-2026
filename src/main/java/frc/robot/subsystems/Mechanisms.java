@@ -15,7 +15,7 @@ public class Mechanisms extends SubsystemBase {
     private boolean isIntakeOn = false;
     private boolean isFeeding = false;
     private boolean raising = false;
-    private double startTimeafterSpinning = 0.5;
+    private double startTimeafterSpinning = 1.0;
     private static final double RAISE_HOLD_TIME = 2.0; // wait this long after requesting up, then request down
     private final Timer jamTimer = new Timer();
     private final Timer raiseTimer = new Timer();

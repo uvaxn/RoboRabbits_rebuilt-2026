@@ -15,7 +15,7 @@ public class ShooterCalculation {
             shooterTable.put(3.00, 67.0);// 3.00 meters | 67 rps
             shooterTable.put(4.00, 75.0);
             shooterTable.put(4.50, 85.5);
-            shooterTable.put(5.00, 99.0);// 5.00 meters | 99 rps
+            shooterTable.put(5.00, 95.0);// 5.00 meters | 99 rps
         }
         // the reason for the seemingly high rotations per second is bec-
         // because the shooter is 2:1 where 2 motor turns for one flywheel turn.
