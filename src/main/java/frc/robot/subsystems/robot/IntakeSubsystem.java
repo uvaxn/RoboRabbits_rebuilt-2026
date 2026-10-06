@@ -116,6 +116,10 @@ public class IntakeSubsystem extends SubsystemBase {
 
     @Override
     public void periodic() {
+        NetworkTables.putIntakeRPS(intakeMotor.getVelocity().getValueAsDouble());
+        // position is in motor rotations (zeroed at startup), x360 = degrees
+        NetworkTables.putIntakeDropDeg(dropMotor.getPosition().getValueAsDouble() * 360.0);
+
         if (isAtTop() && !hasSeededTop) {
             hasSeededTop    = true;
             hasSeededBottom = false;

@@ -89,6 +89,8 @@ public class ShooterSubsystem extends SubsystemBase {
 
     public void periodic() {
         NetworkTables.putShooterSpeed(shooterR.getVelocity().getValueAsDouble());
+        NetworkTables.putShooterRRPS(shooterR.getVelocity().getValueAsDouble());
+        NetworkTables.putShooterLRPS(shooterL.getVelocity().getValueAsDouble());
 
         if (!running) {
             return; 

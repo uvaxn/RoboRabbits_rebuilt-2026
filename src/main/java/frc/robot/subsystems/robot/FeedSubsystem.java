@@ -3,6 +3,7 @@ package frc.robot.subsystems.robot;
 import com.ctre.phoenix6.hardware.TalonFX;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.EaseofLife;
+import frc.robot.util.NetworkTables;
 
 public class FeedSubsystem extends SubsystemBase {
     private IntakeSubsystem intake;
@@ -36,5 +37,8 @@ public class FeedSubsystem extends SubsystemBase {
     }
 
     @Override
-    public void periodic() {}
+    public void periodic() {
+        NetworkTables.putLowerFeedRPS(lowerFeed.getVelocity().getValueAsDouble());
+        NetworkTables.putUpperFeedRPS(upperFeed.getVelocity().getValueAsDouble());
+    }
 }

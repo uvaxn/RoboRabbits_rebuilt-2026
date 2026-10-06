@@ -19,6 +19,14 @@ public class NetworkTables {
     // autoalign
     private static final DoublePublisher targetAngle = rbtTable.getDoubleTopic("AutoAlign/TargetAngleDeg").publish();
 
+    private static final DoublePublisher shooterRRps    = rbtTable.getDoubleTopic("ShooterR/RPS").publish();
+    private static final DoublePublisher shooterLRps    = rbtTable.getDoubleTopic("ShooterL/RPS").publish();
+    private static final DoublePublisher intakeRps      = rbtTable.getDoubleTopic("Intake/RPS").publish();
+    private static final DoublePublisher lowerFeedRps   = rbtTable.getDoubleTopic("LowerFeed/RPS").publish();
+    private static final DoublePublisher upperFeedRps   = rbtTable.getDoubleTopic("UpperFeed/RPS").publish();
+    // intake drop is a position mechanism, so it reports degrees instead of RPS
+    private static final DoublePublisher intakeDropDeg  = rbtTable.getDoubleTopic("IntakeDrop/PositionDeg").publish();
+
     // ease of life
     private static final StringPublisher currentShift = infoTable.getStringTopic("EaseofLife/CurrentShift").publish();
     private static final DoublePublisher shiftTimeRemaining = infoTable.getDoubleTopic("EaseofLife/ShiftTimeRemaining").publish();
@@ -63,6 +71,13 @@ public class NetworkTables {
     public static void putDisttoHub(double dist)    { distToHubPublisher.set(dist); }
     public static void putTargetShooterSpeed(double speed){ shooterSpeed.set(speed); }
     public static void putShooterSpeed(double rps){ shooterActualSpeed.set(rps); }
+    // per-motor telemetry
+    public static void putShooterRRPS(double rps)   { shooterRRps.set(rps); }
+    public static void putShooterLRPS(double rps)   { shooterLRps.set(rps); }
+    public static void putIntakeRPS(double rps)     { intakeRps.set(rps); }
+    public static void putLowerFeedRPS(double rps)  { lowerFeedRps.set(rps); }
+    public static void putUpperFeedRPS(double rps)  { upperFeedRps.set(rps); }
+    public static void putIntakeDropDeg(double deg) { intakeDropDeg.set(deg); }
     // PID setters
     public static void putAlignP(double P) { AligntoHubP.set(P); }
     public static void putAlignI(double I) { AligntoHubI.set(I); }
