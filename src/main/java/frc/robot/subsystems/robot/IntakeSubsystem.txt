@@ -1,18 +1,24 @@
 package frc.robot.subsystems.robot;
 //TODO: I wouldn't suggest testing this file on the robot until you have enough time.
+
 import static edu.wpi.first.units.Units.Amps;
 import static edu.wpi.first.units.Units.Degrees;
+import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Second;
 
+import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.FeedbackConfigs;
 import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
+import com.ctre.phoenix6.configs.SoftwareLimitSwitchConfigs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
+import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.FeedbackSensorSourceValue;
 import com.ctre.phoenix6.signals.InvertedValue;
@@ -21,6 +27,7 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.filter.Debouncer;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.util.datalog.BooleanLogEntry;
 import edu.wpi.first.util.datalog.DataLog;
 import edu.wpi.first.util.datalog.DoubleLogEntry;
@@ -36,6 +43,11 @@ import frc.robot.subsystems.DriveInputs;
 import frc.robot.subsystems.EaseofLife;
 public class IntakeSubsystem extends SubsystemBase {
 
+    /**
+     * Nominal angles. UP must stay the SMALLER number: the top sensor becomes the reverse soft
+     * limit and the bottom sensor becomes the forward soft limit. Until a sensor has actually been
+     * hit, these are where the arm is expected to end up.
+     */
     public enum Position {
         UP(0),
         DOWN(100);
@@ -51,10 +63,28 @@ public class IntakeSubsystem extends SubsystemBase {
         }
     }
 
+    // Flip this ONE line if the arm moves the wrong way (see VERIFY block at the top).
+    private static final InvertedValue kPivotInversion = InvertedValue.CounterClockwise_Positive;
+
     private static final double kPivotReduction = 50.0; // 50 motor turns : 1 arm turn
-    private static final AngularVelocity kMotorFreeSpeed = RotationsPerSecond.of(100.0); 
+    private static final AngularVelocity kMotorFreeSpeed = RotationsPerSecond.of(100.0);
     private static final AngularVelocity kMaxPivotSpeed = kMotorFreeSpeed.div(kPivotReduction);
-    private static final Angle kPositionTolerance = Degrees.of(5);
+
+    // --- Sensor stop / soft limit tuning ---
+    // Moves aim a little PAST the sensor so the sensor always gets the final say. The farther past
+    // it is, the faster the arm is still going when it reaches the sensor, so keep these small.
+    /** Before a sensor has been hit: how far past the nominal angle the arm may search for it. */
+    private static final double kUnlearnedMarginDeg = 8.0;
+    /** After a sensor has been hit: the soft limit sits this far past the saved sensor angle. */
+    private static final double kLearnedMarginDeg = 2.0;
+    /** A sensor hit is ignored if the arm is farther than this from where that sensor should be. */
+    private static final double kLearnWindowDeg = 30.0;
+    /** Soft limits are only rewritten when they change by more than this (a write is a blocking CAN call). */
+    private static final double kLimitUpdateDeadbandDeg = 1.0;
+    /** Close enough to the end of a move to say "we got there". */
+    private static final double kGoalToleranceDeg = 1.0;
+    /** A move that takes longer than this (enabled time only) is given up on. A full swing is ~1 s. */
+    private static final double kSeekTimeoutSeconds = 3.0;
 
     private static final double INTAKE_COLLECT_SPEED = -0.8; // collecting from ground
     private static final double INTAKE_FEED_SPEED = -0.5; // pushing balls to shooter
@@ -66,34 +96,52 @@ public class IntakeSubsystem extends SubsystemBase {
     private final DigitalInput lowerSensor;
     private final EaseofLife MotorMode;
 
+    // Cached signals (refreshed once per loop in periodic).
+    private final StatusSignal<Angle> positionSignal;
+    private final StatusSignal<AngularVelocity> velocitySignal;
+    private final StatusSignal<Current> pivotCurrentSignal;
+    private final StatusSignal<Current> rollerCurrentSignal;
+
     private final MotionMagicVoltage pivotMotionMagicRequest = new MotionMagicVoltage(0).withSlot(0);
+    // Used to park the arm. Deliberately NOT a Motion Magic request: re-targeting a Motion Magic
+    // profile mid-move makes it plan a long deceleration (it would coast on through the sensor).
+    private final PositionVoltage pivotHoldRequest = new PositionVoltage(0).withSlot(0);
+
     private Position targetPosition = Position.UP;
+
+    // --- Move state ---
+    // "seeking" = we were told to go to an end and the arm hasn't stopped there yet.
+    private boolean seeking = false;
+    private boolean lastMoveAborted = false; // last move was cut short (stall / timeout)
+    private double seekGoalDeg = 0.0;
+    private double commandedDeg = 0.0;
+    private double measuredDeg = 0.0;
+    private double pivotCurrentAmps = 0.0;
+    private final Timer seekTimer = new Timer();
 
     private enum BounceState { OFF, GOING_UP, GOING_DOWN }
     private BounceState bounceState = BounceState.OFF;
     private boolean bouncing = false;
     private final Timer bounceTimer = new Timer();
 
-    // --- Sensor learn/correct state ---
-    // Sensors sit at unmeasured points along the travel. The first pass by a
-    // sensor records ("learns") the encoder angle at that physical point; every
-    // pass after that snaps the encoder back to the learned angle, correcting
-    // whatever drift crept in since the last pass.
-    private boolean upperSensorLearned = false;
-    private boolean lowerSensorLearned = false;
-    private double upperSensorAngleDeg = 0.0;
-    private double lowerSensorAngleDeg = 0.0;
-    private boolean lastUpperActive = false;
-    private boolean lastLowerActive = false;
-    private final Debouncer upperSensorDebouncer = new Debouncer(0.02, Debouncer.DebounceType.kBoth);
-    private final Debouncer lowerSensorDebouncer = new Debouncer(0.02, Debouncer.DebounceType.kBoth);
+    // --- Saved sensor angles / soft limits ---
+    // Each time a sensor trips, the encoder angle at that moment is saved and the motor's soft
+    // limit for that end is moved to it (plus a small margin). Nothing is ever re-zeroed.
+    private boolean topLearned = false;
+    private boolean bottomLearned = false;
+    private double topSensorDeg = 0.0;
+    private double bottomSensorDeg = 0.0;
+    private boolean lastTopActive = false;
+    private boolean lastBottomActive = false;
+    // What is currently written on the motor (NaN = nothing confirmed yet).
+    private double appliedReverseLimitDeg = Double.NaN; // top
+    private double appliedForwardLimitDeg = Double.NaN; // bottom
 
     // --- Stall detection ---
-    // "Trying to move but can't": we're not at the target, the mechanism is
-    // barely moving, and current is high (motor is actually pushing, not just
-    // idling). Debounced so a normal start-of-motion moment (briefly near-zero
-    // velocity while ramping up) doesn't get flagged as a stall.
-    private static final double kStallVelocityThresholdRps = 0.5; // mechanism rot/s
+    // "Trying to move but can't": we're mid-move, the mechanism is barely moving, and current is
+    // high (motor is actually pushing, not just idling). Debounced so the start of a move (briefly
+    // near-zero velocity while ramping up) isn't flagged. A stall now also ends the move.
+    private static final double kStallVelocityThresholdRps = 0.05; // mechanism rot/s (~18 deg/s)
     private static final double kStallCurrentThresholdAmps = 40.0;
     private final Debouncer stallDebouncer = new Debouncer(0.25, Debouncer.DebounceType.kRising);
     private boolean wasStalled = false;
@@ -104,10 +152,13 @@ public class IntakeSubsystem extends SubsystemBase {
     private final DoubleLogEntry logMeasuredAngleDeg = new DoubleLogEntry(dataLog, "/arm/measuredAngleDeg");
     private final BooleanLogEntry logUpperSensorActive = new BooleanLogEntry(dataLog, "/arm/upperSensorActive");
     private final BooleanLogEntry logLowerSensorActive = new BooleanLogEntry(dataLog, "/arm/lowerSensorActive");
+    private final BooleanLogEntry logSeeking = new BooleanLogEntry(dataLog, "/arm/seeking");
     private final DoubleLogEntry logUpperSensorLearnedDeg =
         new DoubleLogEntry(dataLog, "/arm/upperSensorLearnedAngleDeg");
     private final DoubleLogEntry logLowerSensorLearnedDeg =
         new DoubleLogEntry(dataLog, "/arm/lowerSensorLearnedAngleDeg");
+    private final DoubleLogEntry logTopSoftLimitDeg = new DoubleLogEntry(dataLog, "/arm/topSoftLimitDeg");
+    private final DoubleLogEntry logBottomSoftLimitDeg = new DoubleLogEntry(dataLog, "/arm/bottomSoftLimitDeg");
     private final DoubleLogEntry logPivotCurrentAmps = new DoubleLogEntry(dataLog, "/arm/pivotSupplyCurrentAmps");
     private final DoubleLogEntry logRollerCurrentAmps = new DoubleLogEntry(dataLog, "/arm/rollerSupplyCurrentAmps");
 
@@ -119,26 +170,56 @@ public class IntakeSubsystem extends SubsystemBase {
         this.lowerSensor = lowerSensor;
         this.MotorMode = EaseOfLife;
 
+        this.positionSignal = dropMotor.getPosition();
+        this.velocitySignal = dropMotor.getVelocity();
+        this.pivotCurrentSignal = dropMotor.getSupplyCurrent();
+        this.rollerCurrentSignal = intakeMotor.getSupplyCurrent();
+
+        // Look at the sensors BEFORE configuring so the first config write already has the right
+        // soft limits. The arm starts folded, so a tripped top sensor means "top sensor = 0 deg".
+        lastTopActive = isAtTop();
+        lastBottomActive = isAtBottom();
+        if (lastTopActive) {
+            topSensorDeg = Position.UP.degrees;
+            topLearned = true;
+            logUpperSensorLearnedDeg.append(topSensorDeg);
+        } else {
+            DriverStation.reportWarning(
+                "[Arm] Top sensor is NOT tripped at boot. Start the code with the arm folded against it.", false);
+        }
+        if (lastBottomActive) {
+            DriverStation.reportWarning(
+                "[Arm] Bottom sensor is tripped at boot - the arm is not folded, so the 0 deg zero will be wrong.", false);
+        }
+
         configurePivotMotor();
 
-        // The arm always starts folded at the physical zero position, so we zero
-        // the encoder there directly rather than driving into a hard stop like a
-        // current-spike home.
-        dropMotor.setPosition(Position.UP.angle());
-        set(Position.UP);
+        // Position data is what the saved sensor angles are made from, so don't rely on default rates.
+        BaseStatusSignal.setUpdateFrequencyForAll(100, positionSignal, velocitySignal);
+        BaseStatusSignal.setUpdateFrequencyForAll(20, pivotCurrentSignal, rollerCurrentSignal);
 
-        lastUpperActive = isAtTop();
-        lastLowerActive = isAtBottom();
+        // The arm always starts folded at the physical zero position, so we zero the encoder
+        // there directly rather than driving into a hard stop like a current-spike home.
+        final StatusCode zeroStatus = dropMotor.setPosition(Position.UP.angle());
+        if (!zeroStatus.isOK()) {
+            DriverStation.reportWarning("[Arm] Could not zero the pivot encoder: " + zeroStatus, false);
+        }
+        measuredDeg = Position.UP.degrees;
+        targetPosition = Position.UP;
+        holdAt(measuredDeg); // just stay put; nothing to seek until someone asks
 
         SmartDashboard.putData(this);
         DataLogManager.log("[Arm] Initialized at 0 deg (UP), 50:1 gear ratio.");
     }
 
     private void configurePivotMotor() {
+        final double reverseDeg = topLimitDeg();
+        final double forwardDeg = bottomLimitDeg();
+
         final TalonFXConfiguration config = new TalonFXConfiguration()
             .withMotorOutput(
                 new MotorOutputConfigs()
-                    .withInverted(InvertedValue.CounterClockwise_Positive)
+                    .withInverted(kPivotInversion)
                     .withNeutralMode(NeutralModeValue.Brake)
             )
             .withCurrentLimits(
@@ -164,25 +245,99 @@ public class IntakeSubsystem extends SubsystemBase {
                     .withKI(0)
                     .withKD(0)
                     .withKV(12.0 / kMaxPivotSpeed.in(RotationsPerSecond))
-            );
+            )
+            .withSoftwareLimitSwitch(softLimitConfig(reverseDeg, forwardDeg));
 
         StatusCode status = StatusCode.StatusCodeNotInitialized;
         for (int i = 0; i < 5; i++) {
             status = dropMotor.getConfigurator().apply(config);
             if (status.isOK()) break;
         }
-        if (!status.isOK()) {
+        if (status.isOK()) {
+            appliedReverseLimitDeg = reverseDeg;
+            appliedForwardLimitDeg = forwardDeg;
+        } else {
             DriverStation.reportWarning("[Arm] Pivot motor config failed: " + status, false);
         }
     }
 
-    /** Commands the arm to Motion-Magic-profile to the given named angle. */
+    // ------------------------------------------------------------------------------------
+    // Soft limits
+    // ------------------------------------------------------------------------------------
+
+    /** Top soft limit (reverse/min): just past the saved top sensor angle, or past the nominal UP angle. */
+    private double topLimitDeg() {
+        return topLearned
+            ? topSensorDeg - kLearnedMarginDeg
+            : Position.UP.degrees - kUnlearnedMarginDeg;
+    }
+
+    /** Bottom soft limit (forward/max): just past the saved bottom sensor angle, or past the nominal DOWN angle. */
+    private double bottomLimitDeg() {
+        return bottomLearned
+            ? bottomSensorDeg + kLearnedMarginDeg
+            : Position.DOWN.degrees + kUnlearnedMarginDeg;
+    }
+
+    /** Thresholds on the motor are in MECHANISM ROTATIONS (deg / 360). */
+    private static SoftwareLimitSwitchConfigs softLimitConfig(double reverseDeg, double forwardDeg) {
+        return new SoftwareLimitSwitchConfigs()
+            .withReverseSoftLimitEnable(true)
+            .withReverseSoftLimitThreshold(Degrees.of(reverseDeg).in(Rotations))
+            .withForwardSoftLimitEnable(true)
+            .withForwardSoftLimitThreshold(Degrees.of(forwardDeg).in(Rotations));
+    }
+
+    /**
+     * Writes the current soft limits to the motor if they moved by more than the deadband.
+     * This is a blocking CAN call (a few ms), so it only happens when a sensor is hit or a saved
+     * angle is thrown away, never every loop.
+     */
+    private void updateSoftLimits() {
+        final double reverseDeg = topLimitDeg();
+        final double forwardDeg = bottomLimitDeg();
+        if (Math.abs(reverseDeg - appliedReverseLimitDeg) < kLimitUpdateDeadbandDeg
+                && Math.abs(forwardDeg - appliedForwardLimitDeg) < kLimitUpdateDeadbandDeg) {
+            return;
+        }
+
+        final StatusCode status = dropMotor.getConfigurator().apply(softLimitConfig(reverseDeg, forwardDeg));
+        if (status.isOK()) {
+            appliedReverseLimitDeg = reverseDeg;
+            appliedForwardLimitDeg = forwardDeg;
+            logTopSoftLimitDeg.append(reverseDeg);
+            logBottomSoftLimitDeg.append(forwardDeg);
+            DataLogManager.log(String.format(
+                "[Arm] Soft limits now top=%.2f deg, bottom=%.2f deg", reverseDeg, forwardDeg));
+        } else {
+            // Don't throw from periodic(); the next sensor hit tries again.
+            DriverStation.reportWarning("[Arm] Could not write soft limits: " + status, false);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Moving
+    // ------------------------------------------------------------------------------------
+
+    /**
+     * Sends the arm toward the given end. It keeps going until that end's sensor is hit, then
+     * stops and holds right there. Safe to call every loop (a repeat call while already heading
+     * there, or already parked on the sensor, does nothing).
+     */
     public void set(Position position) {
+        final boolean parked = isSensorActive(position) && plausible(position, measuredDeg);
+        if (position == targetPosition && (seeking || parked)) return;
+
         if (position != targetPosition) {
-            DataLogManager.log("[Arm] Commanded to " + position + " (" + position.angle().in(Degrees) + " deg)");
+            DataLogManager.log("[Arm] Commanded to " + position);
         }
         targetPosition = position;
-        dropMotor.setControl(pivotMotionMagicRequest.withPosition(position.angle()));
+
+        if (parked) {
+            endSeek(measuredDeg, false); // already sitting on that sensor
+        } else {
+            startSeek(position);
+        }
     }
 
     public void requestDown() {
@@ -192,6 +347,76 @@ public class IntakeSubsystem extends SubsystemBase {
     public void requestUp() {
         set(Position.UP);
     }
+
+    private void startSeek(Position position) {
+        seeking = true;
+        lastMoveAborted = false;
+        seekGoalDeg = (position == Position.UP) ? topLimitDeg() : bottomLimitDeg();
+        seekTimer.restart();
+        commandedDeg = seekGoalDeg;
+        dropMotor.setControl(pivotMotionMagicRequest.withPosition(Degrees.of(seekGoalDeg)));
+    }
+
+    /** Stops chasing the goal and holds the arm exactly where it is right now. */
+    private void endSeek(double holdDeg, boolean aborted) {
+        seeking = false;
+        lastMoveAborted = aborted;
+        holdAt(holdDeg);
+    }
+
+    private void holdAt(double deg) {
+        commandedDeg = deg;
+        dropMotor.setControl(pivotHoldRequest.withPosition(Degrees.of(deg)));
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Sensors
+    // ------------------------------------------------------------------------------------
+
+    /** @return true when the upper calibration sensor is currently triggered. */
+    public boolean isAtTop() { return !upperSensor.get(); }
+
+    /** @return true when the lower calibration sensor is currently triggered. */
+    public boolean isAtBottom() { return !lowerSensor.get(); }
+
+    private boolean isSensorActive(Position position) {
+        return position == Position.UP ? isAtTop() : isAtBottom();
+    }
+
+    /**
+     * A sensor only counts when the arm is somewhere near where that sensor should be. That keeps a
+     * shorted wire or a wrong zero from stopping the arm (or saving a bogus soft limit) mid-travel.
+     */
+    private static boolean plausible(Position end, double deg) {
+        return Math.abs(deg - end.degrees) <= kLearnWindowDeg;
+    }
+
+    /** A sensor just tripped (rising edge): remember where, and move that end's soft limit there. */
+    private void onSensorTripped(Position end, double deg) {
+        final String name = end == Position.UP ? "Top" : "Bottom";
+        if (!plausible(end, deg)) {
+            DriverStation.reportWarning(String.format(
+                "[Arm] Ignoring %s sensor trip at %.1f deg (expected near %.1f deg). Check zero/wiring.",
+                name, deg, end.degrees), false);
+            return;
+        }
+
+        if (end == Position.UP) {
+            topSensorDeg = deg;
+            topLearned = true;
+            logUpperSensorLearnedDeg.append(deg);
+        } else {
+            bottomSensorDeg = deg;
+            bottomLearned = true;
+            logLowerSensorLearnedDeg.append(deg);
+        }
+        DataLogManager.log(String.format("[Arm] %s sensor hit at %.2f deg - saved as soft limit", name, deg));
+        updateSoftLimits();
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Bounce / agitate
+    // ------------------------------------------------------------------------------------
 
     public void startBounce() {
         bouncing = true;
@@ -223,152 +448,203 @@ public class IntakeSubsystem extends SubsystemBase {
                 }
             }
             case GOING_DOWN -> {
-                if (isNear(Position.DOWN)) {
-                    requestUp();
-                    bounceTimer.restart();
-                    bounceState = BounceState.GOING_UP;
+                if (!seeking) { // the down move is over: bottom sensor hit (or it gave up)
+                    if (lastMoveAborted) {
+                        // Stalled / timed out on the way down. Don't keep hammering it.
+                        DriverStation.reportWarning("[Arm] Bounce stopped: the down move did not finish cleanly.", false);
+                        bouncing = false;
+                        bounceState = BounceState.OFF;
+                        MotorMode.setSpeed(intakeMotor, 0);
+                        bounceTimer.stop();
+                        bounceTimer.reset();
+                    } else {
+                        requestUp();
+                        bounceTimer.restart();
+                        bounceState = BounceState.GOING_UP;
+                    }
                 }
             }
             case OFF -> {}
         }
     }
 
+    // ------------------------------------------------------------------------------------
+    // Rollers
+    // ------------------------------------------------------------------------------------
+
     public void start() {
         MotorMode.setSpeed(intakeMotor, INTAKE_COLLECT_SPEED);
+    }
+
+    /** Rollers only: push balls up toward the feeders (FeedSubsystem in the repo calls this). */
+    public void startFeed() {
+        MotorMode.setSpeed(intakeMotor, INTAKE_FEED_SPEED);
     }
 
     public void stop() {
         MotorMode.setSpeed(intakeMotor, 0);
     }
 
-    /** @return true when the arm has reached its current target and isn't agitating. */
+    // ------------------------------------------------------------------------------------
+    // Status
+    // ------------------------------------------------------------------------------------
+
+    /** @return true when the arm has finished its current move (sensor hit, or it gave up) and isn't agitating. */
     public boolean isIdle() {
-        return !bouncing && isNear(targetPosition);
+        return !bouncing && !seeking;
     }
 
-    /** @return true when the arm is down at its target (intake presumed collecting). */
+    /** @return true when the arm finished a move to the bottom (intake presumed collecting). */
     public boolean isCollecting() {
         return isIdle() && targetPosition == Position.DOWN;
     }
 
-    /** @return true when the arm is up at its target. */
+    /** @return true when the arm finished a move to the top. */
     public boolean isFullyUp() {
         return isIdle() && targetPosition == Position.UP;
     }
 
-    /** @return true when the upper calibration sensor is currently triggered. */
-    public boolean isAtTop() { return !upperSensor.get(); }
-
-    /** @return true when the lower calibration sensor is currently triggered. */
-    public boolean isAtBottom() { return !lowerSensor.get(); }
-
-    private boolean isNear(Position position) {
-        return dropMotor.getPosition().getValue().isNear(position.angle(), kPositionTolerance);
-    }
-
-    private void handleUpperSensorTrigger() {
-        final double measuredDeg = dropMotor.getPosition().getValue().in(Degrees);
-        if (!upperSensorLearned) {
-            upperSensorAngleDeg = measuredDeg;
-            upperSensorLearned = true;
-            DataLogManager.log(String.format("[Arm] Upper sensor LEARNED angle: %.2f deg", measuredDeg));
-        } else {
-            final double driftDeg = measuredDeg - upperSensorAngleDeg;
-            dropMotor.setPosition(Degrees.of(upperSensorAngleDeg));
-            DataLogManager.log(String.format(
-                "[Arm] Upper sensor pass: measured=%.2f deg, reset to learned=%.2f deg (corrected %.2f deg drift)",
-                measuredDeg, upperSensorAngleDeg, driftDeg));
-        }
-        logUpperSensorLearnedDeg.append(upperSensorAngleDeg);
-    }
-
-    private void handleLowerSensorTrigger() {
-        final double measuredDeg = dropMotor.getPosition().getValue().in(Degrees);
-        if (!lowerSensorLearned) {
-            lowerSensorAngleDeg = measuredDeg;
-            lowerSensorLearned = true;
-            DataLogManager.log(String.format("lower sensor LEARNED angle: %.2f deg", measuredDeg));
-        } else {
-            final double driftDeg = measuredDeg - lowerSensorAngleDeg;
-            dropMotor.setPosition(Degrees.of(lowerSensorAngleDeg));
-            DataLogManager.log(String.format(
-                "lower sensor pass: measured=%.2f deg, reset to learned=%.2f deg (corrected %.2f deg drift)",
-                measuredDeg, lowerSensorAngleDeg, driftDeg));
-        }
-        logLowerSensorLearnedDeg.append(lowerSensorAngleDeg);
-    }
+    // ------------------------------------------------------------------------------------
+    // Main loop
+    // ------------------------------------------------------------------------------------
 
     @Override
     public void periodic() {
-        final boolean upperActive = upperSensorDebouncer.calculate(isAtTop());
-        final boolean lowerActive = lowerSensorDebouncer.calculate(isAtBottom());
-        double velocityRps =
-            Math.abs(dropMotor.getVelocity().getValue().in(RotationsPerSecond));
+        BaseStatusSignal.refreshAll(positionSignal, velocitySignal, pivotCurrentSignal, rollerCurrentSignal);
+        measuredDeg = positionSignal.getValue().in(Degrees);
+        final double velocityRps = Math.abs(velocitySignal.getValue().in(RotationsPerSecond));
+        pivotCurrentAmps = pivotCurrentSignal.getValue().in(Amps);
 
-        double currentAmps =
-            Math.abs(dropMotor.getSupplyCurrent().getValue().in(Amps));
-        boolean tryingToMove = !isNear(targetPosition);
-        boolean possibleStall =
-            tryingToMove
+        final boolean topActive = isAtTop();
+        final boolean bottomActive = isAtBottom();
+
+        // 1) STOP first. The moment the sensor we're driving toward is hit, hold right here.
+        final boolean hitTarget = seeking && (targetPosition == Position.UP
+            ? topActive && plausible(Position.UP, measuredDeg)
+            : bottomActive && plausible(Position.DOWN, measuredDeg));
+        if (hitTarget) {
+            endSeek(measuredDeg, false);
+            DataLogManager.log(String.format("[Arm] Stopped on %s sensor at %.2f deg", targetPosition, measuredDeg));
+        }
+
+        // 2) SAVE: every fresh trip of a sensor saves its angle and moves that soft limit.
+        if (topActive && !lastTopActive) {
+            onSensorTripped(Position.UP, measuredDeg);
+        }
+        if (bottomActive && !lastBottomActive) {
+            onSensorTripped(Position.DOWN, measuredDeg);
+        }
+        lastTopActive = topActive;
+        lastBottomActive = bottomActive;
+
+        // 3) Safety nets for a sensor that never trips.
+        updateSeekWatchdogs(velocityRps, Math.abs(pivotCurrentAmps));
+
+        updateBounce();
+
+        logCommandedAngleDeg.append(commandedDeg);
+        logMeasuredAngleDeg.append(measuredDeg);
+        logUpperSensorActive.append(topActive);
+        logLowerSensorActive.append(bottomActive);
+        logSeeking.append(seeking);
+        logPivotCurrentAmps.append(pivotCurrentAmps);
+        logRollerCurrentAmps.append(rollerCurrentSignal.getValue().in(Amps));
+    }
+
+    /** Ends a move that has stalled, run out of time, or reached its goal without the sensor tripping. */
+    private void updateSeekWatchdogs(double velocityRps, double currentAmps) {
+        // Only enabled time counts, otherwise sitting disabled mid-move would burn the timeout.
+        if (DriverStation.isDisabled()) {
+            seekTimer.restart();
+        }
+
+        final boolean possibleStall =
+            seeking
             && velocityRps < kStallVelocityThresholdRps
             && currentAmps > kStallCurrentThresholdAmps;
 
-        boolean stalled = stallDebouncer.calculate(possibleStall);
- 
+        final boolean stalled = stallDebouncer.calculate(possibleStall);
+
         if (stalled && !wasStalled) {
             DataLogManager.log(String.format(
-                "[Arm] stalling! Target=%.1f deg, Position=%.1f deg, Velocity=%.2f rps, Current=%.1f A",
-                targetPosition.angle().in(Degrees),
-                dropMotor.getPosition().getValue().in(Degrees),
-                velocityRps,
-                currentAmps
+                "[Arm] stalling! Goal=%.1f deg, Position=%.1f deg, Velocity=%.2f rps, Current=%.1f A",
+                seekGoalDeg, measuredDeg, velocityRps, currentAmps
             ));
 
             DriverStation.reportWarning(
                 String.format(
-                    "stalling! Target=%.1f deg, Position=%.1f deg, Current=%.1f A",
-                    targetPosition.angle().in(Degrees),
-                    dropMotor.getPosition().getValue().in(Degrees),
-                    currentAmps
+                    "stalling! Goal=%.1f deg, Position=%.1f deg, Current=%.1f A. Holding here.",
+                    seekGoalDeg, measuredDeg, currentAmps
                 ),
                 false
             );
+            wasStalled = true;
+            endSeek(measuredDeg, true); // stop pushing and park where we are
+            return;
         }
-
         wasStalled = stalled;
-        if (upperActive && !lastUpperActive) {
-            handleUpperSensorTrigger();
-        }
-        if (lowerActive && !lastLowerActive) {
-            handleLowerSensorTrigger();
-        }
-        lastUpperActive = upperActive;
-        lastLowerActive = lowerActive;
 
-        updateBounce();
+        if (!seeking) return;
 
-        logCommandedAngleDeg.append(targetPosition.angle().in(Degrees));
-        logMeasuredAngleDeg.append(dropMotor.getPosition().getValue().in(Degrees));
-        logUpperSensorActive.append(upperActive);
-        logLowerSensorActive.append(lowerActive);
-        logPivotCurrentAmps.append(dropMotor.getSupplyCurrent().getValue().in(Amps));
-        logRollerCurrentAmps.append(intakeMotor.getSupplyCurrent().getValue().in(Amps));
+        if (Math.abs(measuredDeg - seekGoalDeg) <= kGoalToleranceDeg) {
+            onGoalReachedWithoutSensor();
+        } else if (seekTimer.hasElapsed(kSeekTimeoutSeconds)) {
+            DriverStation.reportWarning(String.format(
+                "[Arm] Move to %s timed out after %.1f s (Position=%.1f deg, Goal=%.1f deg). Holding here.",
+                targetPosition, kSeekTimeoutSeconds, measuredDeg, seekGoalDeg), false);
+            endSeek(measuredDeg, true);
+        }
+    }
+
+    /**
+     * The arm got all the way to the end of its allowed travel and that end's sensor never tripped.
+     * If the end was using a saved angle, that angle is stale (slipped belt, drift, sensor moved):
+     * throw it away and look once more through the wider nominal window. Otherwise give up and hold.
+     */
+    private void onGoalReachedWithoutSensor() {
+        final boolean top = targetPosition == Position.UP;
+        final String name = top ? "top" : "bottom";
+        final boolean wasLearned = top ? topLearned : bottomLearned;
+
+        if (wasLearned) {
+            if (top) {
+                topLearned = false;
+            } else {
+                bottomLearned = false;
+            }
+            DriverStation.reportWarning(String.format(
+                "[Arm] Reached the %s soft limit (%.1f deg) without the sensor tripping. " +
+                "Saved angle looks stale - searching the nominal range once.", name, seekGoalDeg), false);
+            updateSoftLimits();
+            startSeek(targetPosition);
+            return;
+        }
+
+        DriverStation.reportWarning(String.format(
+            "[Arm] Reached %.1f deg but the %s sensor never tripped. Check the sensor and the nominal angle.",
+            seekGoalDeg, name), false);
+        endSeek(measuredDeg, false);
     }
 
     @Override
     public void initSendable(SendableBuilder builder) {
+        super.initSendable(builder);
         builder.addStringProperty("Target Position", () -> targetPosition.name(), null);
-        builder.addDoubleProperty("Commanded Angle (deg)", () -> targetPosition.angle().in(Degrees), null);
-        builder.addDoubleProperty("Measured Angle (deg)", () -> dropMotor.getPosition().getValue().in(Degrees), null);
+        builder.addBooleanProperty("Seeking Sensor", () -> seeking, null);
+        builder.addDoubleProperty("Commanded Angle (deg)", () -> commandedDeg, null);
+        builder.addDoubleProperty("Measured Angle (deg)", () -> measuredDeg, null);
         builder.addBooleanProperty("At Target", this::isIdle, null);
+        builder.addBooleanProperty("Last Move Aborted", () -> lastMoveAborted, null);
         builder.addBooleanProperty("Upper Sensor Active", this::isAtTop, null);
         builder.addBooleanProperty("Lower Sensor Active", this::isAtBottom, null);
-        builder.addBooleanProperty("Upper Sensor Learned", () -> upperSensorLearned, null);
-        builder.addBooleanProperty("Lower Sensor Learned", () -> lowerSensorLearned, null);
-        builder.addDoubleProperty("Upper Sensor Learned Angle (deg)", () -> upperSensorAngleDeg, null);
-        builder.addDoubleProperty("Lower Sensor Learned Angle (deg)", () -> lowerSensorAngleDeg, null);
-        builder.addDoubleProperty("Pivot Supply Current (A)", () -> dropMotor.getSupplyCurrent().getValue().in(Amps), null);
+        builder.addBooleanProperty("Upper Sensor Learned", () -> topLearned, null);
+        builder.addBooleanProperty("Lower Sensor Learned", () -> bottomLearned, null);
+        builder.addDoubleProperty("Upper Sensor Learned Angle (deg)", () -> topSensorDeg, null);
+        builder.addDoubleProperty("Lower Sensor Learned Angle (deg)", () -> bottomSensorDeg, null);
+        builder.addDoubleProperty("Top Soft Limit (deg)", () -> appliedReverseLimitDeg, null);
+        builder.addDoubleProperty("Bottom Soft Limit (deg)", () -> appliedForwardLimitDeg, null);
+        builder.addDoubleProperty("Pivot Supply Current (A)", () -> pivotCurrentAmps, null);
         builder.addDoubleProperty(
-            "Roller Supply Current (A)", () -> intakeMotor.getSupplyCurrent().getValue().in(Amps), null);
+            "Roller Supply Current (A)", () -> rollerCurrentSignal.getValue().in(Amps), null);
     }
 }
