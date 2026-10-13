@@ -1,3 +1,4 @@
+
 package frc.robot.subsystems;
 
 import edu.wpi.first.wpilibj.Timer;
@@ -8,102 +9,75 @@ import frc.robot.subsystems.robot.ShooterSubsystem;
 import frc.robot.util.NetworkTables;
 
 public class Mechanisms extends SubsystemBase {
-    private ShooterSubsystem shooters;
-    private IntakeSubsystem intakes;
-    private FeedSubsystem feeds;
+    private final ShooterSubsystem shooters;
+    private final IntakeSubsystem intakes;
+    private final FeedSubsystem feeds;
+
     private boolean wantIntake = false;
     private boolean isIntakeOn = false;
-    private boolean isFeeding = false;
-    private boolean raising = false;
-    private double startTimeafterSpinning = 1.0;
-    private static final double RAISE_HOLD_TIME = 2.0; // wait this long after requesting up, then request down
-    private final Timer jamTimer = new Timer();
-    private final Timer raiseTimer = new Timer();
+    private boolean wantShoot = false;
     private boolean shooterReady = false;
-
-    private enum RaiseStage { UP1, DOWN }
-    private RaiseStage raiseStage = RaiseStage.UP1;
-
-    public Mechanisms(ShooterSubsystem ShooterSubsystem, IntakeSubsystem IntakeSubsystem, FeedSubsystem FeedSubsystem) {
-        this.shooters = ShooterSubsystem;
-        this.intakes = IntakeSubsystem;
-        this.feeds = FeedSubsystem;
+    private final Timer spinupTimer = new Timer();
+    private static final double MAX_SPINUP_TIME = 1.0;
+    public Mechanisms(
+            ShooterSubsystem shooterSubsystem,
+            IntakeSubsystem intakeSubsystem,
+            FeedSubsystem feedSubsystem) {
+        this.shooters = shooterSubsystem;
+        this.intakes = intakeSubsystem;
+        this.feeds = feedSubsystem;
     }
     public void StartShooting() {
-        NetworkTables.putRobotState("SPINNING UP");
+        if (wantShoot) {
+            return;
+        }
+        wantShoot = true;
         shooterReady = false;
+        NetworkTables.putRobotState("SPINNING UP");
         shooters.start();
-        jamTimer.restart();
-        jamTimer.start();
+        spinupTimer.restart();
     }
-
-    public void intakeFeed() {
-        isFeeding = true;
-        raising = false;
-        shooterReady = false; // re-arm so periodic() re-fires this mode's entry action
-    }
-
-    public void intakeFeedShoot() {
-        StartShooting();
-        intakeFeed();
-     }
 
     public void Intake() {
         NetworkTables.putRobotState("INTAKE");
-        wantIntake = true;  
+        wantIntake = true;
         intakes.requestDown();
     }
 
     public void StopIntake() {
         NetworkTables.putRobotState("STOPPED INTAKE");
         wantIntake = false;
-        intakes.stop();
         isIntakeOn = false;
+        intakes.stop();
     }
 
     public void StopShoot() {
-        NetworkTables.putRobotState("STOPPED FIRING");
-        shooters.stop();
-        feeds.stop();
-        isFeeding = false;
-        raising = false;
+        wantShoot = false;
         shooterReady = false;
+
+        NetworkTables.putRobotState("STOPPED FIRING");
+
+        spinupTimer.stop();
+        feeds.stop();
+        shooters.stop();
+        intakes.stopAgitate();
     }
 
     @Override
-
     public void periodic() {
         if (wantIntake && intakes.isAtBottom() && !isIntakeOn) {
             intakes.start();
             isIntakeOn = true;
         }
-        if (isFeeding && !shooterReady && (shooters.atSpeed() || jamTimer.hasElapsed(startTimeafterSpinning))) {
-            NetworkTables.putRobotState("SHOOTER READY");
+        if (wantShoot && !shooterReady
+                && (shooters.atSpeed()
+                    || spinupTimer.hasElapsed(MAX_SPINUP_TIME))) {
+            NetworkTables.putRobotState("FIRING");
             feeds.start();
+            intakes.startAgitate();
+
             shooterReady = true;
-        }
-        if (isFeeding && shooterReady && !raising) {
-            raising = true;
-            raiseStage = RaiseStage.UP1;
-            intakes.requestUp();
-            raiseTimer.restart();
-            raiseTimer.start();
-        }
-        if (raising) {
-            switch (raiseStage) {
-                case UP1 -> {
-                    if (raiseTimer.hasElapsed(RAISE_HOLD_TIME)) {
-                        raiseStage = RaiseStage.DOWN;
-                        intakes.requestDown();
-                    }
-                }
-                case DOWN -> {
-                    if (intakes.isAtBottom()) {
-                        intakes.requestUp();
-                        raising = false; // sequence done
-                    }
-                }
-            }
+            spinupTimer.stop();
         }
     }
 }

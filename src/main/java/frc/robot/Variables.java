@@ -31,7 +31,7 @@ public class Variables {
 
 
     private static final double BASE_SPEED = TunerConstants.kSpeedAt12Volts.in(MetersPerSecond);
-    private static final double DEFAULT_SPEED_MULTIPLIER = 0.5;
+    private static final double DEFAULT_SPEED_MULTIPLIER = 0.6;
 
     // Named speed-limit requests. Effective MaxSpeed = BASE_SPEED * (min of all active requests).
     private static final Map<String, Double> speedLimitRequests = new ConcurrentHashMap<>();

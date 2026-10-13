@@ -6,8 +6,10 @@ package frc.robot;
  * Left Joystick  -- Moves robot
  * Right Joystick -- Rotates robot
  * Left Trigger   -- Intake (drops down and intakes)
- * Right Trigger  -- Shoot (raises intake, then feeds once the shooter is ready)
- * Left Bumper    -- Reset field-centric heading
+ * Right Trigger  -- Shoot & Align
+ * Left Bumper    -- Just Shoot
+ * Right Bumper   -- Just Shoot toward us
+ * Start          -- Reset field-centric heading
  * X Button       -- Auto-align to nearest AprilTag
  * Y Button       -- Auto-align to alliance Wall
  * A Button       -- Points wheels based on joystick direction
@@ -17,6 +19,7 @@ package frc.robot;
  */
 
 import static edu.wpi.first.units.Units.*;
+
 import edu.wpi.first.math.MathUtil;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
@@ -55,7 +58,7 @@ public class RobotContainer {
     private static final double ROTATION_STICK_DEADBAND = 0.08; // matches DriveInputs' X/Y deadband
 
     private final SwerveRequest.FieldCentric drive = new SwerveRequest.FieldCentric()
-        // .withDeadband(Vars.MaxSpeed * 0.03) -- this has 3 percent deadband
+        .withDeadband(Variables.getMaxSpeed() * 0.03) 
         .withRotationalDeadband(MaxAngularRate * 0.03) // was 0.003 (0.3%) -- effectively no deadband, fixed the decimal
         .withDriveRequestType(DriveRequestType.OpenLoopVoltage);
 
@@ -116,7 +119,7 @@ public class RobotContainer {
     );
     // Commands
     public RobotContainer() {
-        NamedCommands.registerCommand("shoot",      new InstantCommand(() -> mechanisms.intakeFeedShoot()));
+        NamedCommands.registerCommand("shoot",      new InstantCommand(() -> mechanisms.StartShooting()));
         NamedCommands.registerCommand("stop shoot", new InstantCommand(() -> mechanisms.StopShoot()));
         NamedCommands.registerCommand("intake",     new InstantCommand(intakes::start, intakes));
         NamedCommands.registerCommand("stop intake",  new InstantCommand(intakes::stop,  intakes));
@@ -192,7 +195,7 @@ public class RobotContainer {
             .onTrue(new InstantCommand(mechanisms::StartShooting, mechanisms))
             .onFalse(new InstantCommand(mechanisms::StopShoot, mechanisms));
         joystick.rightTrigger()
-            .onTrue(new InstantCommand(mechanisms::intakeFeed, mechanisms));
+            .onTrue(new InstantCommand(mechanisms::StartShooting, mechanisms));
         joystick.rightTrigger().whileTrue(new AlignToPoint(
             easeOfLife,
             drivetrain,
@@ -204,7 +207,7 @@ public class RobotContainer {
 
         // Right bumper: align to alliance wall and shoot.
         joystick.rightBumper()
-            .onTrue(new InstantCommand(mechanisms::intakeFeedShoot, mechanisms))
+            .onTrue(new InstantCommand(mechanisms::StartShooting, mechanisms))
             .onFalse(new InstantCommand(mechanisms::StopShoot, mechanisms));
         joystick.rightBumper().whileTrue(new AlignToAllianceWall(
             drivetrain,

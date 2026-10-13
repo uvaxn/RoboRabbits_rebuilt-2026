@@ -1,18 +1,14 @@
 package frc.robot.subsystems.robot;
 
-import com.ctre.phoenix6.StatusCode;
-import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.controls.CoastOut;
 import com.ctre.phoenix6.controls.StaticBrake;
 import com.ctre.phoenix6.hardware.TalonFX;
-
 import edu.wpi.first.wpilibj.DigitalInput;
-import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.subsystems.DriveInputs;
 import frc.robot.subsystems.EaseofLife;
-import frc.robot.util.NetworkTables;
+    import edu.wpi.first.wpilibj.Timer;
 public class IntakeSubsystem extends SubsystemBase {
 
     private final TalonFX intakeMotor;
@@ -23,13 +19,30 @@ public class IntakeSubsystem extends SubsystemBase {
     private static final double DROP_SPEED = 0.15;
     private static final double LIFT_SPEED = 0.15;
 
-    private static final double INTAKE_COLLECT_SPEED = -0.8; // collecting from ground
+    private static final double AGITATE_DROP_SPEED = 0.2;
+    private static final double AGITATE_LIFT_SPEED = 0.1;
+
+    private static final double INTAKE_COLLECT_SPEED = -1; // collecting from ground
     private static final double INTAKE_FEED_SPEED = -0.65; // for pushing balls to shooter
     private final CoastOut    coastOut    = new CoastOut();
     private final StaticBrake staticBrake = new StaticBrake();
 
     private enum DropState { IDLE, MOVING_DOWN, MOVING_UP }
 
+
+    private final Timer AgitateTimer = new Timer();
+
+    private static final double Agitate_UP_TIME = 2; // time held at top
+
+    private enum AgitateState {
+        
+        OFF,
+        GOING_UP,
+        GOING_DOWN
+    }
+
+    private AgitateState agitateState = AgitateState.OFF;
+    private boolean bouncing = false;
     private DropState state = DropState.IDLE;
     // what "Seeded" means in these variables is basically has it set off the top sensor (it stores that) 
     private boolean hasSeededTop    = true; // the nail is somewhat bent at the top, so it wont set off the top sensor too well. Best to leave this true.
@@ -45,32 +58,8 @@ public class IntakeSubsystem extends SubsystemBase {
         this.upperSensor = upperSensor;
         this.lowerSensor = lowerSensor;
         this.MotorMode = EaseOfLife;     
-        applyCurrentLimits(intakeMotor, "Intake", 70.0, 55.0, 25.0, 1.0);
-        applyCurrentLimits(dropMotor, "Intake drop", 50.0, 40.0, 10.0, 1.0);
         dropMotor.setPosition(0.0);
         dropMotor.setControl(staticBrake);
-    }
-    private void applyCurrentLimits(TalonFX motor, String label, double statorAmps, double supplyAmps,
-                                    double supplyLowerAmps, double supplyLowerTimeSec) {
-        CurrentLimitsConfigs limits = new CurrentLimitsConfigs();
-        limits.StatorCurrentLimit = statorAmps;
-        limits.StatorCurrentLimitEnable = true;
-        limits.SupplyCurrentLimit = supplyAmps;
-        limits.SupplyCurrentLimitEnable = true;
-        limits.SupplyCurrentLowerLimit = supplyLowerAmps;
-        limits.SupplyCurrentLowerTime = supplyLowerTimeSec;
-
-        StatusCode status = null;
-        boolean success = false;
-        for (int attempt = 0; attempt < 5 && !success; attempt++) {
-            status = motor.getConfigurator().apply(limits);
-            success = status.isOK();
-        }
-        if (!success) {
-            DriverStation.reportWarning(
-                label + " motor " + motor.getDeviceID() + " failed to apply current limits: " + status,
-                false);
-        }
     }
 
     public void requestDown() {
@@ -83,29 +72,68 @@ public class IntakeSubsystem extends SubsystemBase {
         state = DropState.MOVING_UP;
 
     }
-    /** Spins the intake roller to push balls up toward the feed rollers. */
+    public void startAgitate() {
+        bouncing = true;
+        agitateState = AgitateState.GOING_UP;
+        MotorMode.setSpeed(intakeMotor, INTAKE_FEED_SPEED);
+        requestUp();
+        AgitateTimer.restart();
+    }
+
+    public void stopAgitate() {
+        bouncing = false;
+        agitateState = AgitateState.OFF;
+        MotorMode.setSpeed(intakeMotor, 0);
+        AgitateTimer.stop();
+        AgitateTimer.reset();
+        // return the arm to the bottom at the normal drop speed.
+        if (!isAtBottom()) {
+            requestDown();
+        }
+    }
     public void startFeed() {
         MotorMode.setSpeed(intakeMotor, INTAKE_FEED_SPEED);
     }
+    private void updateAgitate() {
+            if (!bouncing) return;
 
+            switch (agitateState) {
+                case GOING_UP -> {
+                    // Keep going up until the timer expires
+                    if (AgitateTimer.hasElapsed(Agitate_UP_TIME)) {
+                        requestDown();
+                        agitateState = AgitateState.GOING_DOWN;
+                    }
+                }
+                case GOING_DOWN -> {
+                    // Once bottom sensor is hit, go back up
+                    if (isAtBottom()) {
+                        requestUp();
+                        AgitateTimer.restart();
+                        agitateState = AgitateState.GOING_UP;
+                    }
+                }
+                case OFF -> {}
+            }
+        }
     public void start() {
         MotorMode.setSpeed(intakeMotor, INTAKE_COLLECT_SPEED);
-        NetworkTables.putRobotState("INTAKE");
     }
     public void stop() {
         MotorMode.setSpeed(intakeMotor, 0);
-        NetworkTables.putRobotState("STOPPED INTAKE");
     }
  
-
+    /** @return true when the arm is not moving useful for command isFinished() checks */
     public boolean isIdle() {
         return state == DropState.IDLE;
     }
 
+    /** @return true when arm is fully down and intake is collecting */
     public boolean isCollecting() {
         return state == DropState.IDLE && isAtBottom();
     }
 
+    /** @return true when arm is fully up */
     public boolean isFullyUp() {
         return state == DropState.IDLE && isAtTop();
     }
@@ -116,10 +144,6 @@ public class IntakeSubsystem extends SubsystemBase {
 
     @Override
     public void periodic() {
-        NetworkTables.putIntakeRPS(intakeMotor.getVelocity().getValueAsDouble());
-        // position is in motor rotations (zeroed at startup), x360 = degrees
-        NetworkTables.putIntakeDropDeg(dropMotor.getPosition().getValueAsDouble() * 360.0);
-
         if (isAtTop() && !hasSeededTop) {
             hasSeededTop    = true;
             hasSeededBottom = false;
@@ -135,7 +159,8 @@ public class IntakeSubsystem extends SubsystemBase {
                     dropMotor.setControl(coastOut);
                     state = DropState.IDLE;
                 } else {
-                    dropMotor.set(-DROP_SPEED);
+                    double speed = bouncing ? AGITATE_DROP_SPEED : DROP_SPEED;
+                    dropMotor.set(-speed);
                 }
             }
 
@@ -144,11 +169,13 @@ public class IntakeSubsystem extends SubsystemBase {
                     dropMotor.setControl(staticBrake);
                     state = DropState.IDLE;
                 } else {
-                    dropMotor.set(LIFT_SPEED);
+                    double speed = bouncing ? AGITATE_LIFT_SPEED : LIFT_SPEED;
+                    dropMotor.set(speed);
                 }
             }
 
             case IDLE -> {}
         }
+        updateAgitate();
     }
 }

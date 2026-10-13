@@ -1,6 +1,30 @@
 package frc.robot.subsystems.robot;
 //TODO: I wouldn't suggest testing this file on the robot until you have enough time.
 
+// ------------------------------ VERIFY BEFORE MATCH ------------------------------
+// DIRECTION  This file needs the drop motor's POSITIVE direction to be the arm moving DOWN
+//            (UP = 0 deg, DOWN = +100 deg). Your older open-loop code lifted with a POSITIVE
+//            output and dropped with a negative one, so with the default inversion positive was
+//            UP. kPivotInversion is therefore set to Clockwise_Positive. CHECK IT (10 seconds):
+//            with the robot DISABLED, push the arm down by hand and watch "Measured Angle (deg)".
+//            It must go UP toward +100. If it goes negative, set kPivotInversion back to
+//            CounterClockwise_Positive. (A wrong direction can't run away: the stall check
+//            ends the move within about half a second and holds still.)
+// START POSE The arm must be folded at the top when the code starts (encoder is zeroed there).
+// SENSORS    DIO 0 = top, DIO 1 = bottom, active-low (get() == false means "hit").
+//            "Hit" means the sensor just tripped. Going up stops on the top sensor, going down
+//            stops on the bottom sensor, and the arm then holds right where it stopped.
+// SOFT LIMITS Top sensor angle = reverse (min) soft limit, bottom sensor angle = forward (max)
+//            soft limit. Both are rewritten on the motor when a sensor is hit and its saved angle
+//            has moved by more than 1 deg (a write is a blocking CAN call, so not every time).
+// BOUNCE     startBounce() loops: lift kBounceLiftDeg (50 deg) above the bottom position, pause
+//            kBounceTopPauseSeconds there, then drop back until the bottom sensor is hit, then lift again. The lift is a plain Motion Magic
+//            move to an angle (the top sensor isn't involved). stopBounce() ends the loop and
+//            drops the arm to the bottom.
+// TUNE       Position.UP / DOWN are only NOMINAL angles now (used until a sensor has been hit).
+//            kBounceLiftDeg, kBounceTopPauseSeconds, kUnlearnedMarginDeg, kLearnedMarginDeg, kSeekTimeoutSeconds, stall thresholds.
+// ---------------------------------------------------------------------------------
+
 import static edu.wpi.first.units.Units.Amps;
 import static edu.wpi.first.units.Units.Degrees;
 import static edu.wpi.first.units.Units.Rotations;
@@ -64,7 +88,7 @@ public class IntakeSubsystem extends SubsystemBase {
     }
 
     // Flip this ONE line if the arm moves the wrong way (see VERIFY block at the top).
-    private static final InvertedValue kPivotInversion = InvertedValue.CounterClockwise_Positive;
+    private static final InvertedValue kPivotInversion = InvertedValue.Clockwise_Positive;
 
     private static final double kPivotReduction = 50.0; // 50 motor turns : 1 arm turn
     private static final AngularVelocity kMotorFreeSpeed = RotationsPerSecond.of(100.0);
@@ -74,7 +98,7 @@ public class IntakeSubsystem extends SubsystemBase {
     // Moves aim a little PAST the sensor so the sensor always gets the final say. The farther past
     // it is, the faster the arm is still going when it reaches the sensor, so keep these small.
     /** Before a sensor has been hit: how far past the nominal angle the arm may search for it. */
-    private static final double kUnlearnedMarginDeg = 8.0;
+    private static final double kUnlearnedMarginDeg = 5.0;
     /** After a sensor has been hit: the soft limit sits this far past the saved sensor angle. */
     private static final double kLearnedMarginDeg = 2.0;
     /** A sensor hit is ignored if the arm is farther than this from where that sensor should be. */
@@ -88,7 +112,12 @@ public class IntakeSubsystem extends SubsystemBase {
 
     private static final double INTAKE_COLLECT_SPEED = -0.8; // collecting from ground
     private static final double INTAKE_FEED_SPEED = -0.5; // pushing balls to shooter
-    private static final double BOUNCE_UP_TIME = 0.3; // seconds held "up" during agitate
+    /** The bounce lifts the arm this far above the bottom position, then drops it back down. */
+    private static final double kBounceLiftDeg = 50.0;
+    /** How long the arm waits at the raised height (rollers keep feeding) before dropping. 0 = no pause. */
+    private static final double kBounceTopPauseSeconds = 0.5;
+    /** A lift to a set angle counts as done once the arm is this close and has stopped (gravity can leave it a bit short). */
+    private static final double kAngleToleranceDeg = 3.0;
 
     private final TalonFX intakeMotor;
     private final TalonFX dropMotor;
@@ -112,6 +141,8 @@ public class IntakeSubsystem extends SubsystemBase {
     // --- Move state ---
     // "seeking" = we were told to go to an end and the arm hasn't stopped there yet.
     private boolean seeking = false;
+    private boolean seekingSensor = true;  // true: run until an end sensor trips. false: lift to a set angle (bounce)
+    private boolean partialHold = false;   // arm is parked at a set angle (bounce), not at an end
     private boolean lastMoveAborted = false; // last move was cut short (stall / timeout)
     private double seekGoalDeg = 0.0;
     private double commandedDeg = 0.0;
@@ -119,10 +150,10 @@ public class IntakeSubsystem extends SubsystemBase {
     private double pivotCurrentAmps = 0.0;
     private final Timer seekTimer = new Timer();
 
-    private enum BounceState { OFF, GOING_UP, GOING_DOWN }
+    private enum BounceState { OFF, GOING_UP, HOLDING_UP, GOING_DOWN }
     private BounceState bounceState = BounceState.OFF;
     private boolean bouncing = false;
-    private final Timer bounceTimer = new Timer();
+    private final Timer bouncePauseTimer = new Timer();
 
     // --- Saved sensor angles / soft limits ---
     // Each time a sensor trips, the encoder angle at that moment is saved and the motor's soft
@@ -177,8 +208,8 @@ public class IntakeSubsystem extends SubsystemBase {
 
         // Look at the sensors BEFORE configuring so the first config write already has the right
         // soft limits. The arm starts folded, so a tripped top sensor means "top sensor = 0 deg".
-        lastTopActive = isAtTop();
-        lastBottomActive = isAtBottom();
+        lastTopActive = !upperSensor.get();    // active-low, same as isAtTop()
+        lastBottomActive = !lowerSensor.get(); // same as isAtBottom()
         if (lastTopActive) {
             topSensorDeg = Position.UP.degrees;
             topLearned = true;
@@ -281,11 +312,12 @@ public class IntakeSubsystem extends SubsystemBase {
 
     /** Thresholds on the motor are in MECHANISM ROTATIONS (deg / 360). */
     private static SoftwareLimitSwitchConfigs softLimitConfig(double reverseDeg, double forwardDeg) {
-        return new SoftwareLimitSwitchConfigs()
-            .withReverseSoftLimitEnable(true)
-            .withReverseSoftLimitThreshold(Degrees.of(reverseDeg).in(Rotations))
-            .withForwardSoftLimitEnable(true)
-            .withForwardSoftLimitThreshold(Degrees.of(forwardDeg).in(Rotations));
+        final SoftwareLimitSwitchConfigs limits = new SoftwareLimitSwitchConfigs();
+        limits.ReverseSoftLimitEnable = true;
+        limits.ReverseSoftLimitThreshold = Degrees.of(reverseDeg).in(Rotations);
+        limits.ForwardSoftLimitEnable = true;
+        limits.ForwardSoftLimitThreshold = Degrees.of(forwardDeg).in(Rotations);
+        return limits;
     }
 
     /**
@@ -326,7 +358,8 @@ public class IntakeSubsystem extends SubsystemBase {
      */
     public void set(Position position) {
         final boolean parked = isSensorActive(position) && plausible(position, measuredDeg);
-        if (position == targetPosition && (seeking || parked)) return;
+        final boolean headingThere = seeking && seekingSensor; // a bounce lift doesn't count
+        if (position == targetPosition && (headingThere || parked)) return;
 
         if (position != targetPosition) {
             DataLogManager.log("[Arm] Commanded to " + position);
@@ -334,6 +367,7 @@ public class IntakeSubsystem extends SubsystemBase {
         targetPosition = position;
 
         if (parked) {
+            seekingSensor = true;
             endSeek(measuredDeg, false); // already sitting on that sensor
         } else {
             startSeek(position);
@@ -350,6 +384,7 @@ public class IntakeSubsystem extends SubsystemBase {
 
     private void startSeek(Position position) {
         seeking = true;
+        seekingSensor = true;
         lastMoveAborted = false;
         seekGoalDeg = (position == Position.UP) ? topLimitDeg() : bottomLimitDeg();
         seekTimer.restart();
@@ -357,9 +392,23 @@ public class IntakeSubsystem extends SubsystemBase {
         dropMotor.setControl(pivotMotionMagicRequest.withPosition(Degrees.of(seekGoalDeg)));
     }
 
+    /** Motion Magic lift to a set angle (the bounce). It ends when the arm gets there; no sensor is involved. */
+    private void startMoveToAngle(double deg) {
+        targetPosition = Position.UP; // it's a lift, so "up" in direction only
+        seeking = true;
+        seekingSensor = false;
+        lastMoveAborted = false;
+        seekGoalDeg = Math.max(topLimitDeg(), Math.min(bottomLimitDeg(), deg)); // stay inside the soft limits
+        seekTimer.restart();
+        commandedDeg = seekGoalDeg;
+        dropMotor.setControl(pivotMotionMagicRequest.withPosition(Degrees.of(seekGoalDeg)));
+        DataLogManager.log(String.format("[Arm] Bounce lift to %.1f deg", seekGoalDeg));
+    }
+
     /** Stops chasing the goal and holds the arm exactly where it is right now. */
     private void endSeek(double holdDeg, boolean aborted) {
         seeking = false;
+        partialHold = !seekingSensor; // parked mid-travel, so not "fully up" or "collecting"
         lastMoveAborted = aborted;
         holdAt(holdDeg);
     }
@@ -415,57 +464,84 @@ public class IntakeSubsystem extends SubsystemBase {
     }
 
     // ------------------------------------------------------------------------------------
-    // Bounce / agitate
+    // Bounce / agitate loop:  lift kBounceLiftDeg above the bottom  ->  drop to the bottom sensor  ->  repeat
     // ------------------------------------------------------------------------------------
 
+    /**
+     * Starts the loop. The rollers run at feed speed the whole time; call stopBounce() to end it.
+     * The raised position is always kBounceLiftDeg above the bottom, so starting from the top first
+     * brings the arm down to that height.
+     */
     public void startBounce() {
         bouncing = true;
-        bounceState = BounceState.GOING_UP;
         MotorMode.setSpeed(intakeMotor, INTAKE_FEED_SPEED);
-        requestUp();
-        bounceTimer.restart();
+        beginBounceUp();
         DataLogManager.log("[Arm] Bounce/agitate started");
     }
 
+    /** Ends the loop, stops the rollers, and sends the arm back down to the bottom sensor. */
     public void stopBounce() {
+        endBounce();
+        requestDown();
+        DataLogManager.log("[Arm] Bounce/agitate stopped");
+    }
+
+    private void endBounce() {
         bouncing = false;
         bounceState = BounceState.OFF;
         MotorMode.setSpeed(intakeMotor, 0);
-        bounceTimer.stop();
-        bounceTimer.reset();
-        requestDown();
-        DataLogManager.log("[Arm] Bounce/agitate stopped");
+        bouncePauseTimer.stop();
+    }
+
+    /** The raised position: kBounceLiftDeg above where the bottom sensor was hit (the nominal bottom until then). */
+    private double bounceRaisedDeg() {
+        final double bottomDeg = bottomLearned ? bottomSensorDeg : Position.DOWN.degrees;
+        return bottomDeg - kBounceLiftDeg; // UP is the smaller angle
+    }
+
+    private void beginBounceUp() {
+        bounceState = BounceState.GOING_UP;
+        startMoveToAngle(bounceRaisedDeg());
+    }
+
+    private void beginBounceDown() {
+        bounceState = BounceState.GOING_DOWN;
+        requestDown(); // drops until the bottom sensor is hit, then holds there
     }
 
     private void updateBounce() {
         if (!bouncing) return;
 
+        if (bounceState == BounceState.HOLDING_UP) { // parked at the raised height
+            if (bouncePauseTimer.hasElapsed(kBounceTopPauseSeconds)) {
+                beginBounceDown();
+            }
+            return;
+        }
+        if (seeking) return; // wait for the current move to finish
+
+        if (lastMoveAborted) { // it stalled or timed out: stop looping instead of hammering
+            abortBounce();
+            return;
+        }
         switch (bounceState) {
             case GOING_UP -> {
-                if (bounceTimer.hasElapsed(BOUNCE_UP_TIME)) {
-                    requestDown();
-                    bounceState = BounceState.GOING_DOWN;
+                if (kBounceTopPauseSeconds > 0) {
+                    bounceState = BounceState.HOLDING_UP;
+                    bouncePauseTimer.restart();
+                } else {
+                    beginBounceDown();
                 }
             }
-            case GOING_DOWN -> {
-                if (!seeking) { // the down move is over: bottom sensor hit (or it gave up)
-                    if (lastMoveAborted) {
-                        // Stalled / timed out on the way down. Don't keep hammering it.
-                        DriverStation.reportWarning("[Arm] Bounce stopped: the down move did not finish cleanly.", false);
-                        bouncing = false;
-                        bounceState = BounceState.OFF;
-                        MotorMode.setSpeed(intakeMotor, 0);
-                        bounceTimer.stop();
-                        bounceTimer.reset();
-                    } else {
-                        requestUp();
-                        bounceTimer.restart();
-                        bounceState = BounceState.GOING_UP;
-                    }
-                }
-            }
-            case OFF -> {}
+            case GOING_DOWN -> beginBounceUp();
+            case HOLDING_UP, OFF -> {}
         }
+    }
+
+    /** A move stalled or timed out: stop looping instead of hammering on whatever is in the way. */
+    private void abortBounce() {
+        DriverStation.reportWarning("[Arm] Bounce stopped: a move did not finish cleanly (stall or timeout).", false);
+        endBounce();
     }
 
     // ------------------------------------------------------------------------------------
@@ -501,7 +577,7 @@ public class IntakeSubsystem extends SubsystemBase {
 
     /** @return true when the arm finished a move to the top. */
     public boolean isFullyUp() {
-        return isIdle() && targetPosition == Position.UP;
+        return isIdle() && targetPosition == Position.UP && !partialHold;
     }
 
     // ------------------------------------------------------------------------------------
@@ -519,7 +595,7 @@ public class IntakeSubsystem extends SubsystemBase {
         final boolean bottomActive = isAtBottom();
 
         // 1) STOP first. The moment the sensor we're driving toward is hit, hold right here.
-        final boolean hitTarget = seeking && (targetPosition == Position.UP
+        final boolean hitTarget = seeking && seekingSensor && (targetPosition == Position.UP
             ? topActive && plausible(Position.UP, measuredDeg)
             : bottomActive && plausible(Position.DOWN, measuredDeg));
         if (hitTarget) {
@@ -586,12 +662,22 @@ public class IntakeSubsystem extends SubsystemBase {
 
         if (!seeking) return;
 
-        if (Math.abs(measuredDeg - seekGoalDeg) <= kGoalToleranceDeg) {
-            onGoalReachedWithoutSensor();
-        } else if (seekTimer.hasElapsed(kSeekTimeoutSeconds)) {
+        final double errDeg = Math.abs(measuredDeg - seekGoalDeg);
+        if (seekingSensor) {
+            if (errDeg <= kGoalToleranceDeg) {
+                onGoalReachedWithoutSensor();
+                return;
+            }
+        } else if (errDeg <= kAngleToleranceDeg && velocityRps < kStallVelocityThresholdRps) {
+            endSeek(seekGoalDeg, false); // bounce lift is done: close enough and stopped
+            return;
+        }
+
+        if (seekTimer.hasElapsed(kSeekTimeoutSeconds)) {
             DriverStation.reportWarning(String.format(
                 "[Arm] Move to %s timed out after %.1f s (Position=%.1f deg, Goal=%.1f deg). Holding here.",
-                targetPosition, kSeekTimeoutSeconds, measuredDeg, seekGoalDeg), false);
+                seekingSensor ? targetPosition.toString() : "the bounce height",
+                kSeekTimeoutSeconds, measuredDeg, seekGoalDeg), false);
             endSeek(measuredDeg, true);
         }
     }
