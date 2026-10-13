@@ -1,11 +1,12 @@
 package frc.robot.subsystems.robot;
 
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.CoastOut;
 import com.ctre.phoenix6.controls.StaticBrake;
 import com.ctre.phoenix6.hardware.TalonFX;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-
+import static edu.wpi.first.units.Units.Amps;
 import frc.robot.subsystems.DriveInputs;
 import frc.robot.subsystems.EaseofLife;
     import edu.wpi.first.wpilibj.Timer;
@@ -51,17 +52,36 @@ public class IntakeSubsystem extends SubsystemBase {
 
 
 
-    public IntakeSubsystem(TalonFX intakeMotor, TalonFX dropMotor,
-                        DigitalInput upperSensor, DigitalInput lowerSensor, EaseofLife EaseOfLife, DriveInputs DriveInputs) {
+    public IntakeSubsystem(
+            TalonFX intakeMotor,
+            TalonFX dropMotor,
+            DigitalInput upperSensor,
+            DigitalInput lowerSensor,
+            EaseofLife EaseOfLife,
+            DriveInputs DriveInputs) {
+
         this.intakeMotor = intakeMotor;
-        this.dropMotor   = dropMotor;
+        this.dropMotor = dropMotor;
         this.upperSensor = upperSensor;
         this.lowerSensor = lowerSensor;
-        this.MotorMode = EaseOfLife;     
+        this.MotorMode = EaseOfLife;
+
+        configureCurrentLimits(intakeMotor);
+        configureCurrentLimits(dropMotor);
+
         dropMotor.setPosition(0.0);
         dropMotor.setControl(staticBrake);
     }
+    private void configureCurrentLimits(TalonFX motor) {
+        TalonFXConfiguration config = new TalonFXConfiguration();
 
+        config.CurrentLimits
+            .withStatorCurrentLimit(Amps.of(120))
+            .withStatorCurrentLimitEnable(true)
+            .withSupplyCurrentLimit(Amps.of(70))
+            .withSupplyCurrentLimitEnable(true);
+        motor.getConfigurator().apply(config);
+    }
     public void requestDown() {
         if (isAtBottom() && !edu.wpi.first.wpilibj.RobotBase.isSimulation()) return;
         state = DropState.MOVING_DOWN;
@@ -176,6 +196,6 @@ public class IntakeSubsystem extends SubsystemBase {
 
             case IDLE -> {}
         }
-        updateAgitate();
+        updateAgitate();                                                                            //didy ☠️
     }
 }
