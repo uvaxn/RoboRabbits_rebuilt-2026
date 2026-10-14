@@ -65,8 +65,6 @@ public class Limelight extends SubsystemBase {
             DriverStation.reportWarning("Limelight pose out of bounds", false);
             return Optional.empty();
         }
-
-
         // mt2 supplies the translation and timestamp, so its tag count is the one that matters.
         final double xyStdDev = baseStdDevForTagCount(mt2.tagCount);
         final Matrix<N3, N1> standardDeviations =

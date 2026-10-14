@@ -18,6 +18,7 @@ public class Robot extends TimedRobot {
         .withJoystickReplay();
     @Override
     public void robotInit() {
+        LimelightHelpers.SetIMUMode(LL_NAME, 1); // re-seed 
         robotContainer = new RobotContainer();
         battery.check(); // man i wonder what this does
     }
@@ -27,7 +28,7 @@ public class Robot extends TimedRobot {
 
 
         CommandScheduler.getInstance().run();
-
+        addVision();
         String mode = DriverStation.isDisabled() ? "Disabled"
             : DriverStation.isAutonomous() ? "Autonomous"
             : DriverStation.isTeleop() ? "Teleop"
@@ -53,18 +54,12 @@ public class Robot extends TimedRobot {
         robotContainer.mechanisms.StopShoot();
         LimelightHelpers.SetIMUMode(LL_NAME, 4); // use the ll4 imu, and swerves gyro.
     }
-    @Override public void disabledInit() {
-        LimelightHelpers.SetIMUMode(LL_NAME, 1); // re-seed 
-    }
+    @Override public void disabledInit() {}
     @Override public void disabledPeriodic() {}
     @Override public void disabledExit() {}
-    @Override public void autonomousPeriodic() {
-        addVision();
-    }
+    @Override public void autonomousPeriodic() {}
     @Override public void autonomousExit() {}
-    @Override public void teleopPeriodic() {
-        addVision();
-    }
+    @Override public void teleopPeriodic() {}
     @Override public void teleopExit() {}
     @Override public void testInit() { CommandScheduler.getInstance().cancelAll(); }
     @Override public void testPeriodic() {}
@@ -72,6 +67,7 @@ public class Robot extends TimedRobot {
     @Override public void simulationInit() {
     }
     @Override public void simulationPeriodic() {}
+
     private void addVision() {
         robotContainer.cameraSubsystem.getMeasurement(
             robotContainer.drivetrain.getState().Pose

@@ -18,19 +18,11 @@ public class batterychecker {
 
         boolean critical = batteryVoltage < CRITICAL_BATTERY_VOLTAGE;
         boolean low = !critical && batteryVoltage < LOW_BATTERY_VOLTAGE;
-
+        
         // Critical battery notification
         if (critical && !criticalBatterySent) {
-            Elastic.sendNotification(
-                new Notification(
-                    NotificationLevel.ERROR,
-                    "CRITICAL BATTERY VOLTAGE",
-                    String.format(
-                        "CHANGE THE BATTERY NOW! Voltage: %.2f V",
-                        batteryVoltage
-                    )
-                )
-            );
+            Elastic.sendNotification(new Notification(NotificationLevel.ERROR, "BATTERY", "CHANGE THE BATTERY NOW!", 10000, 500, 80));
+
 
             criticalBatterySent = true;
             lowBatterySent = false;
@@ -38,16 +30,7 @@ public class batterychecker {
 
         // Low battery notification
         else if (low && !lowBatterySent) {
-            Elastic.sendNotification(
-                new Notification(
-                    NotificationLevel.WARNING,
-                    "LOW BATTERY VOLTAGE",
-                    String.format(
-                        "Be careful with this battery. Voltage: %.2f V",
-                        batteryVoltage
-                    )
-                )
-            );
+        Elastic.sendNotification(new Notification(NotificationLevel.ERROR, "BATTERY", "Careful with this battery.", 10000, 500, 80));
 
             lowBatterySent = true;
         }

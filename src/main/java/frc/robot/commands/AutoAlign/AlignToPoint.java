@@ -69,8 +69,6 @@ public class AlignToPoint extends Command {
     public boolean isAimed() {
         final Rotation2d currentHeading = swerveDrive.getState().Pose.getRotation();
         return Math.abs(currentHeading.minus(targetDirection).getDegrees()) < AIM_TOLERANCE_DEGREES;
-    
-
     }
 
     @Override
