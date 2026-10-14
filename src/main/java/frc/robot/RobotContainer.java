@@ -75,7 +75,7 @@ public class RobotContainer {
     
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
     
-    public final Limelight cameraSubsystem = new Limelight(Constants.LL_NAME);
+    public final Limelight cameraSubsystem = new Limelight(Constants.LL_NAME, drivetrain);
 
     public final EaseofLife easeOfLife = new EaseofLife(cameraSubsystem);
 

@@ -44,7 +44,7 @@ public class EaseofLife extends SubsystemBase {
     public void periodic() {
         NetworkTables.isHubActive(isHubActive());
         shifts.periodic();
-        NetworkTables.putDisttoHub(cam.getDistanceToHub());
+        NetworkTables.putDisttoHub(cam.getDistToHub());
     }
     /** 
      * @param motor The TalonFX motor.
@@ -84,7 +84,7 @@ public class EaseofLife extends SubsystemBase {
     public double getAlignWallD() { return NetworkTables.getAlignWallD(); }
  
     public double getDistToHub() {
-        return cam.getDistanceToHub();
+        return cam.getDistToHub();
      }
  
     public boolean isHubActive() {
