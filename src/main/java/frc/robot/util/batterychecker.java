@@ -1,4 +1,3 @@
-
 package frc.robot.util;
 
 import edu.wpi.first.wpilibj.RobotController;
@@ -21,7 +20,7 @@ public class batterychecker {
         
         // Critical battery notification
         if (critical && !criticalBatterySent) {
-            Elastic.sendNotification(new Notification(NotificationLevel.ERROR, "BATTERY", "CHANGE THE BATTERY NOW!", 10000, 500, 80));
+            Elastic.sendNotification(new Notification(NotificationLevel.ERROR, "BATTERY", "CHANGE THE BATTERY NOW!", 20000, 500, 80));
 
 
             criticalBatterySent = true;
@@ -30,7 +29,7 @@ public class batterychecker {
 
         // Low battery notification
         else if (low && !lowBatterySent) {
-        Elastic.sendNotification(new Notification(NotificationLevel.ERROR, "BATTERY", "Careful with this battery.", 10000, 500, 80));
+        Elastic.sendNotification(new Notification(NotificationLevel.ERROR, "BATTERY", "Careful with this battery.", 20000, 500, 80));
 
             lowBatterySent = true;
         }
