@@ -55,11 +55,11 @@ public class RobotContainer {
 
     private final double MaxAngularRate = RotationsPerSecond.of(Variables.MaxAngularRate).in(RadiansPerSecond);
     
-    private static final double ROTATION_STICK_DEADBAND = 0.08; // matches DriveInputs' X/Y deadband
+
 
     private final SwerveRequest.FieldCentric drive = new SwerveRequest.FieldCentric()
-        .withDeadband(Variables.getMaxSpeed() * 0.03) 
-        .withRotationalDeadband(MaxAngularRate * 0.03) // was 0.003 (0.3%) -- effectively no deadband, fixed the decimal
+        .withDeadband(Variables.getMaxSpeed() * 0.08) 
+        .withRotationalDeadband(MaxAngularRate * 0.075) // was 0.003 (0.3%) -- effectively no deadband, fixed the decimal
         .withDriveRequestType(DriveRequestType.OpenLoopVoltage);
 
     private final SwerveRequest.PointWheelsAt point = new SwerveRequest.PointWheelsAt();
@@ -144,10 +144,10 @@ public class RobotContainer {
 
         drivetrain.setDefaultCommand( // remainder that this chunk of code basically controls the movement of the robot
             drivetrain.applyRequest(() ->
-                drive.withVelocityX(driveInputs.getX())
-                    .withVelocityY(driveInputs.getY())
+                drive.withVelocityX(MathUtil.applyDeadband(driveInputs.getX(), 0.08))
+                    .withVelocityY(MathUtil.applyDeadband(driveInputs.getY(), 0.08))
                     .withRotationalRate(
-                        -MathUtil.applyDeadband(joystick.getRightX(), ROTATION_STICK_DEADBAND) * MaxAngularRate)
+                        -MathUtil.applyDeadband(joystick.getRightX(), 0.08) * MaxAngularRate)
             )
         );
 
@@ -203,7 +203,9 @@ public class RobotContainer {
             driveInputs::getX,
             driveInputs::getY
         ));
-
+        joystick.leftBumper()
+            .onTrue(new InstantCommand(mechanisms::StartShooting, mechanisms))
+            .onFalse(new InstantCommand(mechanisms::StopShoot, mechanisms));
 
         // Right bumper: align to alliance wall and shoot.
         joystick.rightBumper()
