@@ -7,6 +7,12 @@
         {
           "type": "path",
           "data": {
+            "pathName": "Bump (L)"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
             "pathName": "1 (L)"
           }
         },
