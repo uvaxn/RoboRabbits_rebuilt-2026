@@ -99,7 +99,7 @@
   "folder": "1 cycle (left)",
   "idealStartingState": {
     "velocity": 1.0,
-    "rotation": -136.36540029150495
+    "rotation": -146.01214176822663
   },
   "useDefaultConstraints": false
 }

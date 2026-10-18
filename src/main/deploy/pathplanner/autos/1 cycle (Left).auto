@@ -41,6 +41,12 @@
           }
         },
         {
+          "type": "named",
+          "data": {
+            "name": "stop shoot"
+          }
+        },
+        {
           "type": "path",
           "data": {
             "pathName": "3 (L)"
