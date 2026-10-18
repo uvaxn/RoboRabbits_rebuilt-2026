@@ -55,14 +55,17 @@ public class EaseofLife extends SubsystemBase {
         motor.set(MathUtil.clamp(output, -1.0, 1.0));
     }
  
-    // one request object, reused for every call to avoid allocating on every periodic() tick
+    // one request object, reused for every call (no allocation inside periodic())
     private final VelocityVoltage velocityRequest = new VelocityVoltage(0).withSlot(0);
  
-    /** closed loop velocity control, in rotations per second.
-    *   motor's Slot0Configs must already be applied see Shooters constructor.
-    */ 
+    /** Closed-loop velocity in rotations per second. Gains come from MotorGains (Slot0). */
+    public void setRPS(TalonFX motor, double targetRPS) {
+        motor.setControl(velocityRequest.withVelocity(targetRPS));
+    }
+
+    /** Same as setRPS, kept so ShooterSubsystem's existing calls still compile. */
     public void setVelocity(TalonFX motor, double targetRotationsPerSecond) {
-        motor.setControl(velocityRequest.withVelocity(targetRotationsPerSecond));
+        setRPS(motor, targetRotationsPerSecond);
     }
     /** @param brake True or False.
      * 

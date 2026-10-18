@@ -9,6 +9,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import static edu.wpi.first.units.Units.Amps;
 import frc.robot.subsystems.DriveInputs;
 import frc.robot.subsystems.EaseofLife;
+import frc.robot.util.MotorGains;
     import edu.wpi.first.wpilibj.Timer;
 public class IntakeSubsystem extends SubsystemBase {
 
@@ -66,7 +67,7 @@ public class IntakeSubsystem extends SubsystemBase {
         this.lowerSensor = lowerSensor;
         this.MotorMode = EaseOfLife;
 
-        configureCurrentLimits(intakeMotor);
+        MotorGains.configureIntake(intakeMotor);
         configureCurrentLimits(dropMotor);
 
         dropMotor.setPosition(0.0);
@@ -112,7 +113,7 @@ public class IntakeSubsystem extends SubsystemBase {
         }
     }
     public void startFeed() {
-        MotorMode.setSpeed(intakeMotor, INTAKE_FEED_SPEED);
+        MotorMode.setRPS(intakeMotor, 40);
     }
     private void updateAgitate() {
             if (!bouncing) return;

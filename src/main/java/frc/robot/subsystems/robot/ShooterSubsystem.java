@@ -1,13 +1,10 @@
 package frc.robot.subsystems.robot;
 
-import com.ctre.phoenix6.StatusCode;
-import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.hardware.TalonFX;
-import com.ctre.phoenix6.signals.NeutralModeValue;
-import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Variables;
 import frc.robot.subsystems.EaseofLife;
+import frc.robot.util.MotorGains;
 import frc.robot.util.NetworkTables;
 import frc.robot.util.ShooterCalculation;
 public class ShooterSubsystem extends SubsystemBase {
@@ -19,46 +16,7 @@ public class ShooterSubsystem extends SubsystemBase {
         this.shooterR  = shooterR;
         this.shooterL  = shooterL;
         this.MotorMode = EaseOfLife;
-        configureShooter(shooterR, shooterL);
-    }
-
-    private void configureShooter(TalonFX right, TalonFX left) {
-        TalonFXConfiguration sharedConfig = new TalonFXConfiguration();
-        sharedConfig.Slot0.kS = 0.5;
-        sharedConfig.Slot0.kV = 0.1035;
-        sharedConfig.Slot0.kA = 0.003;
-        sharedConfig.Slot0.kP = 0.05;
-        sharedConfig.Slot0.kI = 0.0;
-        sharedConfig.Slot0.kD = 0.0;
-
-        sharedConfig.Feedback.SensorToMechanismRatio = 1.0; // direct drive
-
-        applyCurrentLimitsAndNeutral(sharedConfig);
-        applyConfig(right, sharedConfig);
-        applyConfig(left, sharedConfig);
-    }
-
-    private void applyCurrentLimitsAndNeutral(TalonFXConfiguration config) {
-        config.CurrentLimits.StatorCurrentLimit = 80.0;
-        config.CurrentLimits.StatorCurrentLimitEnable = true;
-        config.CurrentLimits.SupplyCurrentLimit = 70.0;
-        config.CurrentLimits.SupplyCurrentLimitEnable = true;
-        config.CurrentLimits.SupplyCurrentLowerLimit = 40.0;
-        config.CurrentLimits.SupplyCurrentLowerTime = 1.0;
-        config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-    }
-    private void applyConfig(TalonFX motor, TalonFXConfiguration config) {
-        StatusCode status = null;
-        boolean success = false;
-        for (int attempt = 0; attempt < 5 && !success; attempt++) { // attempts to apply configs 5 times, before returning an error message
-            status = motor.getConfigurator().apply(config);
-            success = status.isOK();
-        }
-        if (!success) {
-            DriverStation.reportWarning(
-                "Shooter motor " + motor.getDeviceID() + " failed to configure: " + status,
-                false);
-        }
+        MotorGains.configureShooter(shooterR, shooterL);
     }
 
     public void start() {

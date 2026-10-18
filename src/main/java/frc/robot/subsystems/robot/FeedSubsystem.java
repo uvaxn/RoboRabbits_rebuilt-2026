@@ -3,6 +3,7 @@ package frc.robot.subsystems.robot;
 import com.ctre.phoenix6.hardware.TalonFX;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.EaseofLife;
+import frc.robot.util.MotorGains;
 import frc.robot.util.NetworkTables;
 
 public class FeedSubsystem extends SubsystemBase {
@@ -17,6 +18,7 @@ public class FeedSubsystem extends SubsystemBase {
         this.easeOfLife = EaseofLife;
         this.lowerFeed = lowerFeed;
         this.upperFeed = upperFeed;
+        MotorGains.configureFeed(lowerFeed, upperFeed);
     }
 
     public void start() {
