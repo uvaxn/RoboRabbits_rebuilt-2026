@@ -77,7 +77,7 @@ public class IntakeSubsystem extends SubsystemBase {
         TalonFXConfiguration config = new TalonFXConfiguration();
 
         config.CurrentLimits
-            .withStatorCurrentLimit(Amps.of(60))
+            .withStatorCurrentLimit(Amps.of(20))
             .withStatorCurrentLimitEnable(true)
             .withSupplyCurrentLimit(Amps.of(40))
             .withSupplyCurrentLimitEnable(true);

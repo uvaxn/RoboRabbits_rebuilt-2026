@@ -22,16 +22,16 @@ public final class MotorGains {
     public static final double FEED_GEAR_RATIO    = 1.0; 
     public static final double INTAKE_GEAR_RATIO  = 1.0; 
 
-    public static final double SHOOTER_STATOR_LIMIT       = 80.0;
-    public static final double SHOOTER_SUPPLY_LIMIT       = 70.0;
+    public static final double SHOOTER_STATOR_LIMIT       = 60.0;
+    public static final double SHOOTER_SUPPLY_LIMIT       = 40.0;
     public static final double SHOOTER_SUPPLY_LOWER_LIMIT = 40.0; // supply limit drops to this...
     public static final double SHOOTER_SUPPLY_LOWER_TIME  = 1.0;  // ...after sitting over the limit this many seconds
 
-    public static final double FEED_STATOR_LIMIT = 80.0;
-    public static final double FEED_SUPPLY_LIMIT = 60.0;
+    public static final double FEED_STATOR_LIMIT = 60.0;
+    public static final double FEED_SUPPLY_LIMIT = 40.0;
 
-    public static final double INTAKE_STATOR_LIMIT = 80.0;
-    public static final double INTAKE_SUPPLY_LIMIT = 60.0;
+    public static final double INTAKE_STATOR_LIMIT = 50.0;
+    public static final double INTAKE_SUPPLY_LIMIT = 30.0;
 
     public static void configureShooter(TalonFX right, TalonFX left) {
         TalonFXConfiguration config = baseConfig(
