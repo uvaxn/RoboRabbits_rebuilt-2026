@@ -27,7 +27,7 @@ public final class MotorGains {
     public static final double SHOOTER_SUPPLY_LOWER_LIMIT = 40.0; // supply limit drops to this...
     public static final double SHOOTER_SUPPLY_LOWER_TIME  = 1.0;  // ...after sitting over the limit this many seconds
 
-    public static final double FEED_STATOR_LIMIT = 60.0;
+    public static final double FEED_STATOR_LIMIT = 80.0;
     public static final double FEED_SUPPLY_LIMIT = 40.0;
 
     public static final double INTAKE_STATOR_LIMIT = 50.0;
@@ -52,12 +52,13 @@ public final class MotorGains {
         applyConfig(upper, config);
     }
 
-    /** The regular intake roller */
-    public static void configureIntake(TalonFX intake) {
+    /** Both intake rollers (L and R). R is mirrored in software (negated RPS), so no invert config here. */
+    public static void configureIntake(TalonFX left, TalonFX right) {
         TalonFXConfiguration config = baseConfig(
             INTAKE_GEAR_RATIO, INTAKE_STATOR_LIMIT, INTAKE_SUPPLY_LIMIT);
 
-        applyConfig(intake, config);
+        applyConfig(left, config);
+        applyConfig(right, config);
     }
 
 

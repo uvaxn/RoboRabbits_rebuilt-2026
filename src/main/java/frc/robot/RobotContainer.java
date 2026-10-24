@@ -82,7 +82,8 @@ public class RobotContainer {
     // Motors
     public final TalonFX m_ShooterR   = new TalonFX(Constants.m_ShooterR);
     public final TalonFX m_ShooterL   = new TalonFX(Constants.m_ShooterL);
-    public final TalonFX m_Intake     = new TalonFX(Constants.m_Intake);
+    public final TalonFX m_IntakeL    = new TalonFX(Constants.m_IntakeL);
+    public final TalonFX m_IntakeR    = new TalonFX(Constants.m_IntakeR);
     public final TalonFX m_IntakeDrop = new TalonFX(Constants.m_IntakeDrop);
     public final TalonFX m_LowerFeed  = new TalonFX(Constants.m_LowerFeed);
     public final TalonFX m_UpperFeed  = new TalonFX(Constants.m_UpperFeed);
@@ -90,7 +91,8 @@ public class RobotContainer {
     
     
     public final IntakeSubsystem intakes = new IntakeSubsystem(
-        m_Intake, 
+        m_IntakeL,
+        m_IntakeR,
         m_IntakeDrop,
 
         new DigitalInput(0),

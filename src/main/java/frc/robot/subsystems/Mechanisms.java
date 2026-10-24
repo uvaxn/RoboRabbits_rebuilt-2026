@@ -19,6 +19,10 @@ public class Mechanisms extends SubsystemBase {
     private boolean shooterReady = false;
     private final Timer spinupTimer = new Timer();
     private static final double MAX_SPINUP_TIME = 1.0;
+    // After feeding starts, wait this long before the intake arm starts agitating.
+    private static final double AGITATE_DELAY_SECONDS = 1.0;
+    private final Timer agitateDelayTimer = new Timer();
+    private boolean agitatePending = false;
     public Mechanisms(
             ShooterSubsystem shooterSubsystem,
             IntakeSubsystem intakeSubsystem,
@@ -58,6 +62,9 @@ public class Mechanisms extends SubsystemBase {
         NetworkTables.putRobotState("STOPPED FIRING");
 
         spinupTimer.stop();
+        agitatePending = false;
+        agitateDelayTimer.stop();
+        agitateDelayTimer.reset();
         feeds.stop();
         shooters.stop();
         intakes.stopAgitate();
@@ -74,10 +81,17 @@ public class Mechanisms extends SubsystemBase {
                     || spinupTimer.hasElapsed(MAX_SPINUP_TIME))) {
             NetworkTables.putRobotState("FIRING");
             feeds.start();
-            intakes.startAgitate();
+            agitateDelayTimer.restart();
+            agitatePending = true;
 
             shooterReady = true;
             spinupTimer.stop();
+        }
+        if (wantShoot && agitatePending
+                && agitateDelayTimer.hasElapsed(AGITATE_DELAY_SECONDS)) {
+            intakes.startAgitate();
+            agitatePending = false;
+            agitateDelayTimer.stop();
         }
     }
 }

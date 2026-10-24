@@ -25,9 +25,10 @@ public class Limelight extends SubsystemBase {
             AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
     private static final double FIELD_LENGTH_M = FIELD.getFieldLength();
     private static final double FIELD_WIDTH_M = FIELD.getFieldWidth();
-    private static final double STD_DEV_BASE_1_TAG = 2.5;       // barely trusted
-    private static final double STD_DEV_BASE_2_TAG = 0.7;       // moderately trusted
-    private static final double STD_DEV_BASE_3_PLUS_TAG = 0.1;  // strongly trusted
+    // Citrus Circuits style: std-dev = (meters of noise per meter of tag distance) * avg tag distance.
+    private static final double AUTO_STD_PER_METER   = 0.3; // 1678's value, used in auto/disabled
+    private static final double TELEOP_STD_PER_METER = 0.2; // lower = trust vision more in teleop
+    private static final double MIN_TAG_DIST_M       = 1.0; // floor so very close tags don't give ~0 std-dev
     private CommandSwerveDrivetrain drivetrain;
 
     private static final double ROTATION_STD_DEV = 9999.9;
@@ -43,11 +44,6 @@ public class Limelight extends SubsystemBase {
     private static boolean isInField(Translation2d t) {
         return t.getX() >= 0 && t.getX() <= FIELD_LENGTH_M
                 && t.getY() >= 0 && t.getY() <= FIELD_WIDTH_M;
-    }
-    private static double baseStdDevForTagCount(int tagCount) {
-        if (tagCount >= 3) return STD_DEV_BASE_3_PLUS_TAG;
-        if (tagCount == 2) return STD_DEV_BASE_2_TAG;
-        return STD_DEV_BASE_1_TAG;
     }
 
     /**
@@ -65,8 +61,10 @@ public class Limelight extends SubsystemBase {
             DriverStation.reportWarning("Limelight pose out of bounds", false);
             return Optional.empty();
         }
-        // mt2 supplies the translation and timestamp, so its tag count is the one that matters.
-        final double xyStdDev = baseStdDevForTagCount(mt2.tagCount);
+        // Trust grows as the tags get closer; teleop uses a smaller per-meter value so vision pulls harder.
+        final double stdPerMeter = DriverStation.isTeleopEnabled()
+                ? TELEOP_STD_PER_METER : AUTO_STD_PER_METER;
+        final double xyStdDev = stdPerMeter * Math.max(mt2.avgTagDist, MIN_TAG_DIST_M);
         final Matrix<N3, N1> standardDeviations =
                 VecBuilder.fill(xyStdDev, xyStdDev, ROTATION_STD_DEV);
 

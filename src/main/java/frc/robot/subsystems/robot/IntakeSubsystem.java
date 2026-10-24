@@ -13,7 +13,8 @@ import frc.robot.util.MotorGains;
     import edu.wpi.first.wpilibj.Timer;
 public class IntakeSubsystem extends SubsystemBase {
 
-    private final TalonFX intakeMotor;
+    private final TalonFX intakeMotorL;
+    private final TalonFX intakeMotorR; // mirrored: always runs the opposite direction of intakeMotorL
     private final TalonFX dropMotor;
     private final DigitalInput upperSensor;
     private final DigitalInput lowerSensor;
@@ -24,8 +25,9 @@ public class IntakeSubsystem extends SubsystemBase {
     private static final double AGITATE_DROP_SPEED = 0.2;
     private static final double AGITATE_LIFT_SPEED = 0.1;
 
-    private static final double INTAKE_COLLECT_SPEED = -1; // collecting from ground
-    private static final double INTAKE_FEED_SPEED = -0.65; // for pushing balls to shooter
+    // Magnitudes in rotations/sec. Direction is applied in setIntakeRPS().
+    private static final double INTAKE_COLLECT_RPS = 95; // collecting from ground
+    private static final double INTAKE_FEED_RPS    = 35; // agitating / pushing balls to shooter
     private final CoastOut    coastOut    = new CoastOut();
     private final StaticBrake staticBrake = new StaticBrake();
 
@@ -34,7 +36,7 @@ public class IntakeSubsystem extends SubsystemBase {
 
     private final Timer AgitateTimer = new Timer();
 
-    private static final double Agitate_UP_TIME = 2; // time held at top
+    private static final double Agitate_UP_TIME = 1.5; // time held at top
 
     private enum AgitateState {
         
@@ -54,20 +56,22 @@ public class IntakeSubsystem extends SubsystemBase {
 
 
     public IntakeSubsystem(
-            TalonFX intakeMotor,
+            TalonFX intakeMotorL,
+            TalonFX intakeMotorR,
             TalonFX dropMotor,
             DigitalInput upperSensor,
             DigitalInput lowerSensor,
             EaseofLife EaseOfLife,
             DriveInputs DriveInputs) {
 
-        this.intakeMotor = intakeMotor;
+        this.intakeMotorL = intakeMotorL;
+        this.intakeMotorR = intakeMotorR;
         this.dropMotor = dropMotor;
         this.upperSensor = upperSensor;
         this.lowerSensor = lowerSensor;
         this.MotorMode = EaseOfLife;
 
-        MotorGains.configureIntake(intakeMotor);
+        MotorGains.configureIntake(intakeMotorL, intakeMotorR);
         configureCurrentLimits(dropMotor);
 
         dropMotor.setPosition(0.0);
@@ -93,10 +97,20 @@ public class IntakeSubsystem extends SubsystemBase {
         state = DropState.MOVING_UP;
 
     }
+    private void setIntakeRPS(double rps) {
+        MotorMode.setRPS(intakeMotorL, rps);
+        MotorMode.setRPS(intakeMotorR,  -rps);
+    }
+
+    private void stopIntakeRollers() {
+        MotorMode.setSpeed(intakeMotorL, 0);
+        MotorMode.setSpeed(intakeMotorR, 0);
+    }
+
     public void startAgitate() {
         bouncing = true;
         agitateState = AgitateState.GOING_UP;
-        MotorMode.setSpeed(intakeMotor, INTAKE_FEED_SPEED);
+        setIntakeRPS(INTAKE_FEED_RPS);
         requestUp();
         AgitateTimer.restart();
     }
@@ -104,7 +118,7 @@ public class IntakeSubsystem extends SubsystemBase {
     public void stopAgitate() {
         bouncing = false;
         agitateState = AgitateState.OFF;
-        MotorMode.setSpeed(intakeMotor, 0);
+        stopIntakeRollers();
         AgitateTimer.stop();
         AgitateTimer.reset();
         // return the arm to the bottom at the normal drop speed.
@@ -113,7 +127,7 @@ public class IntakeSubsystem extends SubsystemBase {
         }
     }
     public void startFeed() {
-        MotorMode.setRPS(intakeMotor, 40);
+        setIntakeRPS(INTAKE_FEED_RPS);
     }
     private void updateAgitate() {
             if (!bouncing) return;
@@ -138,10 +152,10 @@ public class IntakeSubsystem extends SubsystemBase {
             }
         }
     public void start() {
-        MotorMode.setSpeed(intakeMotor, INTAKE_COLLECT_SPEED);
+        setIntakeRPS(INTAKE_COLLECT_RPS);
     }
     public void stop() {
-        MotorMode.setSpeed(intakeMotor, 0);
+        stopIntakeRollers();
     }
  
     /** @return true when the arm is not moving useful for command isFinished() checks */
